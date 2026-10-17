@@ -1,3 +1,4 @@
+import {useBodyScrollLock} from '../hooks/useBodyScrollLock';
 import React, { useState, useEffect } from 'react';
 import { X, Sparkles, Copy, Check, FileText, RefreshCw, Wand2, HelpCircle, Play, Trash2 } from 'lucide-react';
 
@@ -214,25 +215,24 @@ export const HolyricsFormatterModal: React.FC<HolyricsFormatterModalProps> = ({
     showToast('Exemplo de louvor carregado e formatado!', 'info');
   };
 
+  useBodyScrollLock(isOpen);
   if (!isOpen) return null;
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative w-full max-w-3xl bg-white dark:bg-neutral-900 rounded-3xl shadow-2xl border border-neutral-200/80 dark:border-neutral-800/80 overflow-hidden flex flex-col max-h-[92vh]">
+      <div role="dialog" aria-modal="true" aria-label="Formatador Holyrics / Projeção" className="workspace-dialog relative w-full max-w-3xl bg-white dark:bg-neutral-900 rounded-3xl shadow-2xl border border-neutral-200/80 dark:border-neutral-800/80 overflow-hidden flex flex-col max-h-[92dvh]">
         
         {/* Modal Header */}
         <div className="p-5 border-b border-neutral-100 dark:border-neutral-800/80 flex items-center justify-between bg-neutral-50/50 dark:bg-neutral-900/50 shrink-0">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 min-w-0">
             <div className="w-10 h-10 rounded-2xl bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center font-bold shrink-0">
               <Sparkles size={22} />
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <h2 className="text-base font-bold text-neutral-900 dark:text-white">Formatador Holyrics / Projeção</h2>
-                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                  Etapa 2/2: Concluída
-                </span>
+
               </div>
-              <p className="text-xs text-neutral-500">Limpe emojis, marcadores e divida a letra em slides prontos para a igreja</p>
+              <p className="text-xs text-neutral-500">Prepare letras e textos para a projeção.</p>
             </div>
           </div>
           <button aria-label="Fechar formatador" onClick={onClose} className="p-2 text-neutral-400 hover:text-neutral-700 dark:hover:text-white rounded-xl transition-colors">
@@ -241,7 +241,7 @@ export const HolyricsFormatterModal: React.FC<HolyricsFormatterModalProps> = ({
         </div>
 
         {/* Modal Body */}
-        <div className="p-5 overflow-y-auto space-y-4 custom-scrollbar flex-1">
+        <div className="dialog-scroll p-5 overflow-y-auto space-y-4 custom-scrollbar flex-1">
           
           {/* Options Toolbar */}
           <div className="p-4 bg-purple-50/50 dark:bg-neutral-800/60 rounded-2xl border border-purple-100 dark:border-neutral-800 text-xs space-y-3">
@@ -270,7 +270,7 @@ export const HolyricsFormatterModal: React.FC<HolyricsFormatterModalProps> = ({
                 className="flex items-center gap-2 px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 active:scale-95 text-white font-bold text-xs shadow-md shadow-purple-500/20 transition-all cursor-pointer"
               >
                 <Sparkles size={15} />
-                <span>🧪 Testar com Exemplo (Que Darei ao Senhor)</span>
+                <span>Testar com exemplo</span>
               </button>
             </div>
 
@@ -282,7 +282,7 @@ export const HolyricsFormatterModal: React.FC<HolyricsFormatterModalProps> = ({
                   onChange={(e) => setRemoveEmojis(e.target.checked)}
                   className="rounded text-purple-600 focus:ring-purple-500 w-4 h-4 cursor-pointer"
                 />
-                <span>Remover Emojis (🔴)</span>
+                <span>Remover emojis</span>
               </label>
 
               <label className="flex items-center gap-2 cursor-pointer font-semibold text-neutral-700 dark:text-neutral-300 hover:text-purple-600 dark:hover:text-purple-400 transition-colors">
@@ -372,13 +372,7 @@ export const HolyricsFormatterModal: React.FC<HolyricsFormatterModalProps> = ({
 
         {/* Modal Footer CTA */}
         <div className="p-4 border-t border-neutral-100 dark:border-neutral-800/80 bg-neutral-50/50 dark:bg-neutral-900/50 flex items-center justify-between shrink-0">
-          <button 
-            onClick={loadSampleLyric}
-            className="flex items-center gap-1.5 text-xs font-bold text-purple-600 dark:text-purple-400 hover:underline"
-          >
-            <Wand2 size={14} />
-            <span>Testar Exemplo Prático</span>
-          </button>
+
 
           <div className="flex items-center gap-2">
             <button 
@@ -391,7 +385,7 @@ export const HolyricsFormatterModal: React.FC<HolyricsFormatterModalProps> = ({
               }`}
             >
               {copied ? <Check size={16} /> : <Copy size={16} />}
-              <span>{copied ? 'Copiado para o Transferidor!' : 'Copiar Resultado'}</span>
+              <span>{copied ? 'Copiado!' : 'Copiar Resultado'}</span>
             </button>
           </div>
         </div>

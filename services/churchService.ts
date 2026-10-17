@@ -39,12 +39,19 @@ export async function fetchTextContent(id: string): Promise<string> {
   return data.content;
 }
 /** Retains the same session across manual retries, including publication-only retries. */
+export interface UploadStatus {
+  phase: 'opening' | 'transferring' | 'publishing' | 'complete';
+  confirmedBytes: number;
+  totalBytes: number;
+}
 export async function uploadFileToScript(file: File, eventName = getServiceName(), onProgress?: (percent: number) => void,
-  options: {signal?: AbortSignal; shareByLink: boolean} = {shareByLink: false}) {
+  options: {signal?: AbortSignal; shareByLink: boolean; onStatus?: (status: UploadStatus) => void} = {shareByLink: false}) {
   if (!options.shareByLink) throw new Error('Confirme que o material pode ser compartilhado por link.');
   options.signal?.throwIfAborted();
   let current = uploads.get(file);
   const resume = Boolean(current);
+  const status = (phase: UploadStatus['phase'], confirmedBytes = 0) => options.onStatus?.({phase, confirmedBytes, totalBytes: file.size});
+  status('opening');
   if (!current) {
     const created = await appApi<{sessionUrl: string}>('/api/media', {action: 'beginUpload', name: file.name,
       mimeType: file.type || 'application/octet-stream', size: file.size, eventName, shareByLink: true}, options);
@@ -52,12 +59,17 @@ export async function uploadFileToScript(file: File, eventName = getServiceName(
   }
   if (!current.id) {
     const result = await uploadResumable(current.sessionUrl, file, {signal: options.signal, resume,
-      onProgress: (received, total) => onProgress?.(Math.min(99, Math.floor(received / total * 100)))});
+      onProgress: (received, total) => {
+        status('transferring', received);
+        onProgress?.(Math.min(99, Math.floor(received / total * 100)));
+      }});
     current.id = result.id;
   }
+  status('publishing', file.size);
   const published = await appApi<{file: DriveFile}>('/api/media', {action: 'publishUpload', id: current.id, confirmShare: true}, options);
   if (!readDriveFiles([published.file])) throw new Error('Não foi possível confirmar a publicação. Tente novamente.');
   uploads.delete(file); onProgress?.(100);
+  status('complete', file.size);
   return {status: 'success', file: published.file};
 }
 export async function fetchFilesFromScript(signal?: AbortSignal): Promise<MediaItem[]> {

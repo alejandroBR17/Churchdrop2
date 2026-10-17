@@ -41,15 +41,15 @@ export function AccessGate({children}: {children: React.ReactNode}) {
     finally {setBusy(false);}
   }
   if (state === 'open') return <>
-    <div className="bg-neutral-900 text-white px-4 py-2 flex items-center justify-between gap-3 text-xs">
+    <div className="operator-strip bg-neutral-900 text-white px-4 py-2 flex items-center justify-between gap-3 text-xs">
       <span className="flex items-center gap-2"><ShieldCheck size={16}/> Acesso de operador</span>
       <button type="button" onClick={leave} disabled={busy} className="flex items-center gap-2 rounded-lg px-3 py-2 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50"><LogOut size={16}/> {busy ? 'Saindo…' : 'Sair deste aparelho'}</button>
     </div>
     {error && <p role="alert" className="bg-rose-50 text-rose-800 p-3 text-sm">{error}</p>}
     {children}
   </>;
-  return <main className="min-h-screen bg-neutral-950 text-neutral-100 flex items-center justify-center p-5">
-    <section className="w-full max-w-md rounded-3xl border border-neutral-800 bg-neutral-900 p-6 sm:p-8 shadow-2xl">
+  return <main className="access-page min-h-screen bg-neutral-950 text-neutral-100 flex items-center justify-center p-5">
+    <section className="access-card w-full max-w-md rounded-3xl border border-neutral-800 bg-neutral-900 p-6 sm:p-8 shadow-2xl">
       <div className="w-12 h-12 rounded-2xl bg-blue-500/15 text-blue-400 flex items-center justify-center mb-5"><KeyRound size={24}/></div>
       <p className="text-xs uppercase tracking-widest text-amber-400 mb-2">Univer Mídia</p>
       <h1 className="text-2xl font-bold mb-3">{state === 'preparing' ? 'Preparando seu novo espaço' : 'Suas mídias, no lugar certo'}</h1>

@@ -110,3 +110,35 @@ test('a response completed after cancellation cannot restore a closed session sn
   await assert.rejects(appApi('/api/media', undefined, {signal: controller.signal,
     fetcher: async () => ({ok: true, status: 200, json: async () => {controller.abort(); return {files: [file]};}})}), error => error.name === 'AbortError');
 });
+
+test('upload reports acknowledged bytes separately from preparing and publishing, without invented progress', async () => {
+  const size = 5 * 1024 * 1024;
+  const source = new File([new Uint8Array(size)], 'Isolado.mp4', {type: 'video/mp4'});
+  const statuses = [];
+  let releaseTransfer, releasePublication, chunks = 0;
+  const transfer = new Promise(resolve => {releaseTransfer = resolve;});
+  const publication = new Promise(resolve => {releasePublication = resolve;});
+  await withFetch(async (_path, init) => {
+    if (init.method === 'PUT') {
+      if (++chunks === 1) return new Response(null, {status: 308, headers: {Range: 'bytes=0-4194303'}});
+      await transfer;
+      return json({id: file.id});
+    }
+    const input = JSON.parse(init.body);
+    if (input.action === 'beginUpload') return json({sessionUrl: 'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&upload_id=isolated'});
+    await publication;
+    return json({file});
+  }, async () => {
+    const pending = uploadFileToScript(source, 'Isolado', undefined, {shareByLink: true, onStatus: value => statuses.push(value)});
+    while(chunks < 2) await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(statuses.at(-1), {phase:'transferring',confirmedBytes:4194304,totalBytes:size});
+    assert.ok(!statuses.some(value=>value.phase==='complete'));
+    releaseTransfer();
+    while(statuses.at(-1).phase !== 'publishing') await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(statuses.at(-1), {phase:'publishing',confirmedBytes:size,totalBytes:size});
+    assert.ok(!statuses.some(value=>value.phase==='complete'));
+    releasePublication(); await pending;
+    assert.deepEqual(statuses.at(-1), {phase:'complete',confirmedBytes:size,totalBytes:size});
+    assert.equal(statuses[0].phase, 'opening');
+  });
+});

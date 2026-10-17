@@ -1,3 +1,4 @@
+import {useBodyScrollLock} from '../hooks/useBodyScrollLock';
 import React, { useState } from 'react';
 import {QRCodeSVG} from 'qrcode.react';
 import { X, QrCode, Copy, Check, Smartphone, Share2, ExternalLink } from 'lucide-react';
@@ -16,6 +17,7 @@ export const QuickShareModal: React.FC<QuickShareModalProps> = ({
   const [copied, setCopied] = useState(false);
   // Never pass Vercel share/protection tokens or session parameters to a QR service.
   const currentUrl = window.location.origin + window.location.pathname;
+  useBodyScrollLock(isOpen);
   if (!isOpen) return null;
 
   const handleCopyLink = async () => {
@@ -28,7 +30,7 @@ export const QuickShareModal: React.FC<QuickShareModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div role="dialog" aria-modal="true" aria-label="Abrir no celular" className="relative w-full max-w-md bg-white dark:bg-neutral-900 rounded-3xl shadow-2xl border border-neutral-200/80 dark:border-neutral-800/80 overflow-hidden flex flex-col max-h-[90vh] overflow-y-auto">
+      <div role="dialog" aria-modal="true" aria-label="Abrir no celular" className="workspace-dialog relative w-full max-w-md bg-white dark:bg-neutral-900 rounded-3xl shadow-2xl border border-neutral-200/80 dark:border-neutral-800/80 overflow-hidden flex flex-col max-h-[90dvh] overflow-y-auto">
         
         {/* Header */}
         <div className="p-5 border-b border-neutral-100 dark:border-neutral-800/80 flex items-center justify-between bg-neutral-50/50 dark:bg-neutral-900/50">

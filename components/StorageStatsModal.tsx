@@ -1,3 +1,4 @@
+import {useBodyScrollLock} from '../hooks/useBodyScrollLock';
 import React, { useState } from 'react';
 import { 
   X, HardDrive, Database, RefreshCw, Trash2, ShieldCheck, 
@@ -30,6 +31,7 @@ export const StorageStatsModal: React.FC<StorageStatsModalProps> = ({
 }) => {
   const [pinging, setPinging] = useState(false);
   const [latency, setLatency] = useState<number | null>(null);
+  useBodyScrollLock(isOpen);
   if (!isOpen) return null;
 
   const testConnection = async () => {
@@ -57,7 +59,7 @@ export const StorageStatsModal: React.FC<StorageStatsModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative w-full max-w-lg bg-white dark:bg-neutral-900 rounded-3xl shadow-2xl border border-neutral-200/80 dark:border-neutral-800/80 overflow-hidden flex flex-col">
+      <div role="dialog" aria-modal="true" aria-label="Diagnóstico do Servidor" className="workspace-dialog relative w-full max-w-lg bg-white dark:bg-neutral-900 rounded-3xl shadow-2xl border border-neutral-200/80 dark:border-neutral-800/80 overflow-hidden flex flex-col">
         
         {/* Header */}
         <div className="p-5 border-b border-neutral-100 dark:border-neutral-800/80 flex items-center justify-between bg-neutral-50/50 dark:bg-neutral-900/50">

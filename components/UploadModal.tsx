@@ -1,7 +1,14 @@
+import {useBodyScrollLock} from '../hooks/useBodyScrollLock';
 import React, { useState, useEffect, useRef } from 'react';
 import {X, Upload, FileText, Loader2} from 'lucide-react';
 import imageCompression from 'browser-image-compression';
+import type {UploadStatus} from '../services/churchService';
 import { getServiceName, uploadFileToScript } from '../services/churchService';
+
+function formatBytes(value: number) {
+  if (value < 1024) return `${value} B`;
+  return `${(value / (value < 1048576 ? 1024 : 1048576)).toLocaleString('pt-BR', {maximumFractionDigits: 1})} ${value < 1048576 ? 'KB' : 'MB'}`;
+}
 
 interface UploadModalProps {
   isOpen: boolean;
@@ -23,7 +30,8 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   const [compressImages, setCompressImages] = useState(true);
   
   const [isUploading, setIsUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
+  const [transfer, setTransfer] = useState<UploadStatus | null>(null);
+  const [fileNumber, setFileNumber] = useState({current: 0, total: 0});
   const [currentFileName, setCurrentFileName] = useState('');
   const [isDragOver, setIsDragOver] = useState(false);
   const [shareByLink, setShareByLink] = useState(false);
@@ -31,12 +39,8 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   const request = useRef<AbortController>();
   const prepared = useRef(new WeakMap<File, File>());
   useEffect(() => () => request.current?.abort(), []);
-  useEffect(() => {
-    if (!isOpen) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {document.body.style.overflow = previous;};
-  }, [isOpen]);
+  useEffect(() => {if (!isOpen) request.current?.abort();}, [isOpen]);
+
 
   useEffect(() => {
     if (!isCustomEvent) {
@@ -44,6 +48,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
       setEventName(getServiceName(dateObj));
     }
   }, [uploadDate, isCustomEvent]);
+  useBodyScrollLock(isOpen);
   if (!isOpen) return null;
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -76,7 +81,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
     }
 
     setIsUploading(true);
-    setUploadProgress(0);
+    setTransfer(null);
     setUploadError('');
     const controller = new AbortController(); request.current = controller;
     const batch = [...files];
@@ -87,6 +92,8 @@ export const UploadModal: React.FC<UploadModalProps> = ({
       if (controller.signal.aborted) break;
       let fileToUpload = prepared.current.get(batch[i]) || batch[i];
       setCurrentFileName(fileToUpload.name);
+      setFileNumber({current: i + 1, total: batch.length});
+      setTransfer(null);
 
       // Compress images if enabled and file is an image > 1MB
       if (!prepared.current.has(batch[i]) && compressImages && fileToUpload.type.startsWith('image/') && fileToUpload.size > 1024 * 1024) {
@@ -109,11 +116,8 @@ export const UploadModal: React.FC<UploadModalProps> = ({
         await uploadFileToScript(
           fileToUpload,
           eventName,
-          (pct) => {
-            const overallPct = Math.floor(((i + (pct / 100)) / batch.length) * 100);
-            setUploadProgress(overallPct);
-          },
-          {signal: controller.signal, shareByLink}
+          undefined,
+          {signal: controller.signal, shareByLink, onStatus: setTransfer}
         );
         successCount++;
         remaining.delete(batch[i]);
@@ -137,7 +141,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-5 bg-black/60 backdrop-blur-sm">
-      <section role="dialog" aria-modal="true" aria-labelledby="upload-title" className="w-full max-w-lg max-h-[90dvh] flex flex-col overflow-hidden rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 shadow-2xl">
+      <section role="dialog" aria-modal="true" aria-labelledby="upload-title" className="workspace-dialog w-full max-w-lg max-h-[90dvh] flex flex-col overflow-hidden rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 shadow-2xl">
         <header className="flex items-center justify-between gap-3 p-5 border-b border-neutral-100 dark:border-neutral-800 shrink-0">
           <div className="flex items-center gap-3 min-w-0">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400"><Upload size={20}/></span>
@@ -146,7 +150,8 @@ export const UploadModal: React.FC<UploadModalProps> = ({
           <button type="button" aria-label="Fechar envio" onClick={onClose} disabled={isUploading} className="p-2 rounded-xl text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-40"><X size={20}/></button>
         </header>
 
-        <div className="min-h-0 overflow-y-auto p-5 space-y-4">
+        <div className="dialog-scroll min-h-0 overflow-y-auto p-5 space-y-4">
+          {!isUploading && <>
           <label onDragOver={e=>{e.preventDefault(); if(!isUploading)setIsDragOver(true);}} onDragLeave={()=>setIsDragOver(false)} onDrop={handleDrop}
             className={`relative block cursor-pointer rounded-2xl border-2 border-dashed p-5 text-center focus-within:ring-2 focus-within:ring-blue-500 ${isDragOver ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30' : 'border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/30'}`}>
             <input type="file" multiple disabled={isUploading} onChange={handleFileChange} aria-label="Escolher arquivos" className="absolute inset-0 h-full w-full cursor-pointer opacity-0 disabled:cursor-not-allowed"/>
@@ -157,7 +162,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
 
           {files.length > 0 && <section aria-label="Arquivos selecionados" className="space-y-2">
             <div className="flex items-center justify-between gap-2 text-xs text-neutral-500"><span>{files.length} selecionado(s)</span><button type="button" disabled={isUploading} onClick={()=>setFiles([])} className="text-blue-600 dark:text-blue-400 disabled:opacity-40">Limpar lista</button></div>
-            <ul className="max-h-36 overflow-y-auto space-y-2">
+            <ul className="space-y-2">
               {files.map((file,index)=><li key={index} className="flex items-center gap-2 p-3 rounded-xl bg-neutral-100 dark:bg-neutral-800">
                 <FileText size={17} className="shrink-0 text-blue-500"/>
                 <span className="min-w-0 flex-1 truncate text-xs font-medium" title={file.name}>{file.name}</span>
@@ -185,9 +190,17 @@ export const UploadModal: React.FC<UploadModalProps> = ({
             <span>Estes arquivos podem ser abertos e repassados por quem receber o link.</span>
           </label>
 
-          {isUploading && <div role="status" className="rounded-2xl bg-blue-50 dark:bg-blue-950/30 p-3 space-y-2">
-            <div className="flex items-center gap-2 text-xs text-blue-700 dark:text-blue-300"><Loader2 size={15} className="animate-spin shrink-0"/><span className="min-w-0 flex-1 truncate">{currentFileName}</span><span>{uploadProgress}%</span></div>
-            <div role="progressbar" aria-label="Progresso do envio" aria-valuemin={0} aria-valuemax={100} aria-valuenow={uploadProgress} className="h-1.5 rounded-full bg-blue-100 dark:bg-blue-900 overflow-hidden"><div className="h-full bg-blue-600 transition-all" style={{width:`${uploadProgress}%`}}/></div>
+          </>}
+          {isUploading && <div role="status" className="upload-status rounded-2xl p-4 space-y-3">
+            <div className="flex items-center justify-between gap-2 text-xs font-semibold"><span>Arquivo {fileNumber.current} de {fileNumber.total}</span><Loader2 size={16} className="animate-spin text-blue-500"/></div>
+            <p className="truncate text-sm font-semibold" title={currentFileName}>{currentFileName}</p>
+            <p className="text-xs text-neutral-500 dark:text-neutral-400">{!transfer ? 'Preparando o arquivo…' : transfer.phase === 'opening' ? 'Conectando ao Drive…' : transfer.phase === 'publishing' ? 'Transferência concluída. Disponibilizando o link…' : transfer.phase === 'complete' ? 'Arquivo disponível na biblioteca.' : 'Transferindo para o Drive'}</p>
+            {transfer?.phase === 'transferring' && <>
+              <div className="flex justify-between gap-2 text-xs tabular-nums"><span>{formatBytes(transfer.confirmedBytes)} de {formatBytes(transfer.totalBytes)}</span><strong>{Math.floor(transfer.confirmedBytes / transfer.totalBytes * 100)}%</strong></div>
+              <div role="progressbar" aria-label="Bytes confirmados pelo Drive" aria-valuemin={0} aria-valuemax={transfer.totalBytes} aria-valuenow={transfer.confirmedBytes} aria-valuetext={`${formatBytes(transfer.confirmedBytes)} de ${formatBytes(transfer.totalBytes)} confirmados`} className="h-2 rounded-full bg-blue-100 dark:bg-blue-950 overflow-hidden"><div className="h-full rounded-full bg-blue-600 transition-[width]" style={{width:`${transfer.confirmedBytes / transfer.totalBytes * 100}%`}}/></div>
+              <p className="text-[11px] text-neutral-500 dark:text-neutral-400">Confirmado pelo Drive. Atualiza a cada bloco de até 4 MB; arquivos pequenos podem concluir de uma vez.</p>
+            </>}
+            <p className="text-[11px] text-neutral-500 dark:text-neutral-400">Mantenha esta página aberta durante o envio.</p>
           </div>}
           {uploadError && <p role="alert" className="rounded-xl bg-rose-50 dark:bg-rose-950/30 p-3 text-xs leading-relaxed text-rose-700 dark:text-rose-300">{uploadError}</p>}
         </div>

@@ -55,7 +55,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({
 
   return (
     <div 
-      className={`group relative bg-white dark:bg-neutral-900 rounded-2xl overflow-hidden border transition-all duration-200 cursor-pointer hover:shadow-xl hover:-translate-y-1 ${
+      className={`media-card group relative bg-white dark:bg-neutral-900 rounded-2xl overflow-hidden border transition-all duration-200 cursor-pointer hover:shadow-xl hover:-translate-y-0.5 ${
         isSelected 
           ? 'ring-2 ring-univer-blue border-transparent bg-blue-50/40 dark:bg-blue-950/20' 
           : 'border-neutral-200/80 dark:border-neutral-800/80'
@@ -148,9 +148,9 @@ export const MediaCard: React.FC<MediaCardProps> = ({
       </div>
 
       {/* Card Info Details */}
-      <div className="p-3.5 flex flex-col justify-between">
+      <div className="p-4 flex flex-col justify-between">
         <div>
-          <h3 className="text-xs font-bold text-neutral-900 dark:text-white truncate" title={item.name}>
+          <h3 className="text-sm font-semibold text-neutral-900 dark:text-white truncate" title={item.name}>
             {item.name}
           </h3>
           <div className="flex items-center justify-between text-[10px] text-neutral-500 dark:text-neutral-400 mt-1">

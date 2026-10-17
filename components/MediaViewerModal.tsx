@@ -1,3 +1,4 @@
+import {useBodyScrollLock} from '../hooks/useBodyScrollLock';
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, Download, ExternalLink, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, 
@@ -65,6 +66,7 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [item, hasNext, hasPrev]);
+  useBodyScrollLock(Boolean(item));
   if (!item) return null;
 
   const handleCopyText = (content?: string) => {
@@ -110,11 +112,11 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-md animate-in fade-in duration-200">
+    <div role="dialog" aria-modal="true" aria-label={`Visualizar ${item.name}`} className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-md animate-in fade-in duration-200">
       
       {/* Top Bar Navigation */}
-      <div className="absolute top-0 inset-x-0 z-20 flex items-center justify-between p-4 bg-gradient-to-b from-black/80 to-transparent text-white">
-        <div className="flex items-center gap-3 min-w-0 pr-4">
+      <div className="absolute top-0 inset-x-0 z-20 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 p-4 bg-gradient-to-b from-black/80 to-transparent text-white">
+        <div className="flex items-center gap-3 min-w-0 basis-full sm:basis-auto sm:flex-1 pr-4">
           <span className="text-xs font-bold uppercase tracking-widest text-univer-gold px-2.5 py-1 bg-white/10 rounded-full border border-white/10 shrink-0">
             {item.type}
           </span>
@@ -123,7 +125,7 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
           </h2>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 shrink-0 ml-auto">
           {/* Zoom controls for images */}
           {item.type === 'image' && (
             <>
@@ -185,7 +187,7 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
 
       {/* Main Content Viewer Canvas */}
       <div 
-        className="w-full h-full flex items-center justify-center p-4 pt-16 pb-16 overflow-hidden relative"
+        className="w-full h-full flex items-center justify-center p-4 pt-28 sm:pt-16 pb-16 overflow-hidden relative"
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}

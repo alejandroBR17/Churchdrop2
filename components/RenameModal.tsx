@@ -1,3 +1,4 @@
+import {useBodyScrollLock} from '../hooks/useBodyScrollLock';
 import React, { useState, useEffect } from 'react';
 import { X, Edit3, Loader2 } from 'lucide-react';
 import { MediaItem } from '../types';
@@ -21,6 +22,7 @@ export const RenameModal: React.FC<RenameModalProps> = ({
   useEffect(() => {
     setNewName(item?.name || '');
   }, [item]);
+  useBodyScrollLock(Boolean(item));
   if (!item) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -43,7 +45,7 @@ export const RenameModal: React.FC<RenameModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative w-full max-w-md bg-white dark:bg-neutral-900 rounded-3xl shadow-2xl border border-neutral-200/80 dark:border-neutral-800/80 overflow-hidden flex flex-col">
+      <div role="dialog" aria-modal="true" aria-label="Renomear Arquivo" className="workspace-dialog relative w-full max-w-md bg-white dark:bg-neutral-900 rounded-3xl shadow-2xl border border-neutral-200/80 dark:border-neutral-800/80 overflow-hidden flex flex-col">
         
         {/* Header */}
         <div className="p-5 border-b border-neutral-100 dark:border-neutral-800/80 flex items-center justify-between bg-neutral-50/50 dark:bg-neutral-900/50">

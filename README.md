@@ -21,7 +21,7 @@ A interface é hospedada na Vercel. `services/churchService.ts` usa somente a AP
 
 Nenhuma credencial de IA é necessária para iniciar a interface atual. Não coloque chaves privadas em código de navegador, no Git ou em variáveis com prefixo `VITE_`.
 
-A nova integração com Drive está descrita em [backend/drive](backend/drive/README.md). A versão 3 do script e o código privado de operador foram configurados somente no Preview. Entrada, listagem e saída foram conferidas pela interface implantada. Um envio binário real isolado, autorizado pelo responsável, confirmou a resposta do Drive no navegador; o arquivo temporário foi enviado à lixeira sem compartilhamento. Publicação por link e download de material real ainda precisam de ensaio completo. Se `UNIVER_DRIVE_ENABLED=false`, a interface mostra preparação e não usa o serviço antigo como fallback. O acervo legado permanece intocado.
+A nova integração com Drive está descrita em [backend/drive](backend/drive/README.md). A versão 3 do script e o código privado de operador foram configurados somente no Preview. Entrada, listagem e saída foram conferidas pela interface implantada. Um envio binário real isolado, autorizado pelo responsável, confirmou a resposta do Drive no navegador; o arquivo temporário foi enviado à lixeira sem compartilhamento. O responsável confirmou que o envio de seu material funcionou após a correção. Download em outro aparelho e vídeos grandes ainda precisam de ensaio completo. Se `UNIVER_DRIVE_ENABLED=false`, a interface mostra preparação e não usa o serviço antigo como fallback. O acervo legado permanece intocado.
 
 O acervo novo é composto somente por materiais que podem ser compartilhados por link, conforme decisão do responsável. A pasta permanece privada. A tela de envio exige confirmação de que qualquer pessoa que receber o link poderá abrir e repassá-lo. Enviar, renomear e remover exigem sessão de operador; o uso cotidiano dispensa login Google. A ativação é exclusiva do Preview protegido, sem publicação em produção.
 
@@ -31,7 +31,7 @@ O service worker guarda apenas o HTML da interface, manifesto e JS/CSS locais. N
 
 Após um primeiro carregamento válido, a interface pode reabrir offline; isso não disponibiliza o acervo nem permite enviar arquivos sem conexão. A entrada exige confirmar sessão online. Metadados da biblioteca e sessões de upload ficam apenas na memória da página, sem persistir URLs de upload. Sair remove esses dados, e uma resposta de sessão expirada bloqueia novamente a interface. A chave conhecida do cache legado é removida ao iniciar/sair; não são apagados outros dados do navegador.
 
-O progresso corresponde aos bytes confirmados pelo Drive; 100% só aparece após confirmar a publicação. Uma falha mantém o arquivo e os seguintes na fila; tentar novamente na mesma página reaproveita a sessão e não reenvia bytes já concluídos se só faltou publicar. Pausar interrompe as próximas requisições. Não prometer envio com navegador fechado nem retomada após recarregar a página.
+O progresso mostra o arquivo atual (N de total), seus bytes confirmados e o total desse arquivo, sem dar o mesmo peso a arquivos de tamanhos diferentes. O percentual da transferência avança a cada bloco confirmado de até 4 MiB. Preparar a imagem, abrir a sessão e disponibilizar o link são etapas separadas, sem percentuais inventados; concluir bytes não significa concluir a publicação. Não há previsão de tempo ou velocidade simulada. Uma falha mantém o arquivo e os seguintes na fila; tentar novamente na mesma página reaproveita a sessão e não reenvia bytes já concluídos se só faltou publicar. Pausar interrompe as próximas requisições. Não prometer envio com navegador fechado nem retomada após recarregar a página.
 
 O envio tem uma seleção principal de arquivos; data, evento/pasta e redução de fotos ficam em opções recolhidas. A confirmação de compartilhamento é obrigatória. O servidor associa cada sessão de upload à origem HTTPS da interface, para que o navegador possa ler a confirmação do Google.
 
@@ -41,7 +41,13 @@ O QR de abertura é gerado localmente, sem serviço externo, código de operador
 
 Atualizações do worker removem somente os caches legados conhecidos desta interface, preservando outros caches. Respostas de login/erros de servidor não são gravadas como se fossem a interface válida. Os testes do worker usam Cache/Fetch isolados, sem acessar o Drive.
 
-## Estado inicial
+## Interface e rolagem
+
+A biblioteca usa navegação lateral no desktop e uma barra inferior no celular, com busca destacada, contagens derivadas dos arquivos carregados e agrupamento por evento. Cores, superfícies, campos, avisos e modais compartilham uma base visual clara/escura. O tema salvo é aplicado antes da primeira pintura, sem iniciar o tema oposto; a preferência do dispositivo é usada quando não há escolha salva. Zoom do navegador permanece permitido.
+
+A página rola normalmente. Somente overlays abertos bloqueiam o fundo; um controle compartilhado mantém o bloqueio durante sobreposições e restaura a rolagem ao fechar, inclusive na saída da sessão. O envio tem uma única área rolável, cabeçalho/ações acessíveis e resumo de progresso em destaque durante a transferência. O menu Adicionar abre o mesmo fluxo em Android e iOS; não tenta acionar um input ainda inexistente. Conteúdo e configurações remotas não são alterados pelo redesign.
+
+## Estado da revisão
 
 Esta importação prepara um ambiente para revisão; não representa auditoria completa. Testes automatizados devem interceptar APIs e sessões de upload ou usar origem isolada, preservando arquivos reais. Testes com respostas simuladas não confirmam CORS/Range, permissões ou download real do Google.
 
