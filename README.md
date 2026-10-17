@@ -21,9 +21,9 @@ A interface é hospedada na Vercel. `services/churchService.ts` usa somente a AP
 
 Nenhuma credencial de IA é necessária para iniciar a interface atual. Não coloque chaves privadas em código de navegador, no Git ou em variáveis com prefixo `VITE_`.
 
-A nova integração com Drive está descrita em [backend/drive](backend/drive/README.md). API e interface estão conectadas e testadas com respostas isoladas. O proprietário já autorizou e publicou a versão inicial do backend assinado; faltam atualizar essa implantação com as ações novas, configurar o código de operador privadamente e validar um envio real autorizado. Enquanto `UNIVER_DRIVE_ENABLED=false`, a interface mostra preparação e não usa o serviço antigo como fallback. O acervo legado permanece intocado.
+A nova integração com Drive está descrita em [backend/drive](backend/drive/README.md). A versão 2 do script e o código privado de operador foram configurados somente no Preview. Entrada, listagem real vazia e saída foram conferidas pela interface implantada. Upload, publicação e download ainda precisam de ensaio real autorizado. Se `UNIVER_DRIVE_ENABLED=false`, a interface mostra preparação e não usa o serviço antigo como fallback. O acervo legado permanece intocado.
 
-O acervo novo é composto somente por materiais que podem ser compartilhados por link, conforme decisão do responsável. A pasta permanece privada. A tela de envio exige confirmação de que qualquer pessoa que receber o link poderá abrir e repassá-lo. Enviar, renomear e remover exigem sessão de operador; o uso cotidiano dispensa login Google. A integração real ainda não está ativa na prévia.
+O acervo novo é composto somente por materiais que podem ser compartilhados por link, conforme decisão do responsável. A pasta permanece privada. A tela de envio exige confirmação de que qualquer pessoa que receber o link poderá abrir e repassá-lo. Enviar, renomear e remover exigem sessão de operador; o uso cotidiano dispensa login Google. A ativação é exclusiva do Preview protegido, sem publicação em produção.
 
 ## Cache e uso offline
 
