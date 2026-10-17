@@ -1,11 +1,12 @@
 /**
  * Univer Mídia control plane. File bytes never pass through Apps Script.
  * Deploy only after reviewing scopes and configuring private Script Properties.
- * Not connected to the legacy service. No public GET, sharing, or permanent deletion.
+ * Not connected to the legacy service. No public GET or permanent deletion.
+ * Only explicitly confirmed, completed app uploads can become readable by link.
  */
 var APP_MARKER = 'univer-midia-v1';
 var DRIVE_ROOT = 'https://www.googleapis.com/drive/v3/files';
-var DRIVE_FIELDS = 'id,name,mimeType,size,parents,trashed,appProperties';
+var DRIVE_FIELDS = 'id,name,mimeType,size,parents,trashed,appProperties,webViewLink,webContentLink,thumbnailLink,resourceKey';
 
 function doGet() {
   return json_({status: 'error', message: 'Acesso não autorizado.'});
@@ -60,6 +61,9 @@ function dispatch_(request) {
   switch (request.action) {
     case 'list': return list_(request.pageToken);
     case 'beginUpload': return beginUpload_(request);
+    case 'publishUpload': return publishUpload_(request.id, request.confirmShare);
+    case 'claimLoginAttempt': return claimLoginAttempt_();
+    case 'getText': return textContent_(request.id);
     case 'rename': return rename_(request.id, request.name);
     case 'trash': return trash_(request.id);
     case 'preserve': return preserve_(request.id, request.preserve);
@@ -143,15 +147,63 @@ function beginUpload_(request) {
   if (!Number.isSafeInteger(maximum) || maximum <= 0 || request.size > maximum) throw new Error('File too large');
   var eventName = request.eventName === undefined ? '' : request.eventName;
   if (typeof eventName !== 'string' || eventName.length > 100) throw new Error('Invalid event');
+  if (request.shareByLink !== true) throw new Error('Confirm link sharing before uploading');
   var response = driveRequest_('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id', 'post', {
     name: name, mimeType: mimeType, parents: [root],
-    appProperties: {app: APP_MARKER, kind: 'media', uploadedAt: new Date().toISOString(), eventName: eventName, preserve: '0'},
+    appProperties: {app: APP_MARKER, kind: 'media', uploadedAt: new Date().toISOString(), eventName: eventName,
+      preserve: '0', sharing: 'pending', expectedSize: String(request.size)},
   }, {'X-Upload-Content-Type': mimeType, 'X-Upload-Content-Length': String(request.size)});
   var headers = response.getAllHeaders();
   var header = Object.keys(headers).find(function (key) { return key.toLowerCase() === 'location'; });
   var session = header && headers[header];
   if (typeof session !== 'string' || !/^https:\/\/www\.googleapis\.com\/upload\/drive\/v3\/files\?/.test(session)) throw new Error('Missing session');
   return {sessionUrl: session};
+}
+
+function publishUpload_(id, confirmShare) {
+  if (confirmShare !== true) throw new Error('Sharing was not confirmed');
+  var file = ownedFile_(id);
+  var expected = Number(file.appProperties.expectedSize);
+  if (!Number.isSafeInteger(expected) || expected <= 0 || String(file.size) !== String(expected)) throw new Error('Upload incomplete');
+  if (file.appProperties.sharing === 'link') return file;
+  if (file.appProperties.sharing !== 'pending') throw new Error('Not a pending app upload');
+  var permissionsUrl = DRIVE_ROOT + '/' + identifier_(id) + '/permissions';
+  var permissions = JSON.parse(driveRequest_(permissionsUrl + '?fields=permissions(id,type,role)&pageSize=100', 'get').getContentText());
+  var linked = (permissions.permissions || []).some(function (permission) {
+    return permission.type === 'anyone' && permission.role === 'reader';
+  });
+  if (!linked) driveRequest_(permissionsUrl + '?fields=id', 'post', {type: 'anyone', role: 'reader', allowFileDiscovery: false});
+  driveRequest_(DRIVE_ROOT + '/' + identifier_(id) + '?fields=id', 'patch', {
+    appProperties: Object.assign({}, file.appProperties, {sharing: 'link', uploadedAt: new Date().toISOString()}),
+  });
+  return ownedFile_(id);
+}
+
+/** Durable, global login budget for this single-operator application, across Function instances. */
+function claimLoginAttempt_() {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(5000);
+  try {
+    var properties = properties_();
+    var now = Date.now();
+    var windowMs = 10 * 60000;
+    var state;
+    try { state = JSON.parse(properties.getProperty('LOGIN_ATTEMPT_WINDOW') || 'null'); } catch (error) { throw new Error('Invalid login state'); }
+    if (state && (!Number.isSafeInteger(state.start) || !Number.isSafeInteger(state.count) || state.count < 0 || state.start > now)) throw new Error('Invalid login state');
+    if (!state || now - state.start >= windowMs) state = {start: now, count: 0};
+    if (state.count >= 10) return {allowed: false, retryAfterSeconds: Math.max(1, Math.ceil((state.start + windowMs - now) / 1000))};
+    state.count += 1;
+    properties.setProperty('LOGIN_ATTEMPT_WINDOW', JSON.stringify(state));
+    return {allowed: true};
+  } finally { lock.releaseLock(); }
+}
+
+function textContent_(id) {
+  var file = ownedFile_(id);
+  if (file.appProperties.sharing !== 'link' || typeof file.mimeType !== 'string' ||
+      file.mimeType.indexOf('text/') !== 0 || !Number.isFinite(Number(file.size)) || Number(file.size) > 262144) throw new Error('Text unavailable');
+  var response = driveRequest_(DRIVE_ROOT + '/' + identifier_(id) + '?alt=media', 'get');
+  return {content: response.getContentText()};
 }
 
 function rename_(id, name) {
@@ -180,7 +232,7 @@ function retentionPreview_(days, pageToken) {
   return {files: page.files.filter(function (file) {
     var properties = file.appProperties || {};
     var uploaded = Date.parse(properties.uploadedAt);
-    return properties.app === APP_MARKER && properties.kind === 'media' && properties.preserve === '0' &&
+    return properties.app === APP_MARKER && properties.kind === 'media' && properties.sharing === 'link' && properties.preserve === '0' &&
       Array.isArray(file.parents) && file.parents.indexOf(rootId_()) !== -1 && !file.trashed &&
       Number.isFinite(uploaded) && uploaded <= cutoff;
   }), nextPageToken: page.nextPageToken};

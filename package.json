@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "browser-image-compression": "^2.0.2",
+    "iron-session": "9.0.1",
     "jszip": "^3.10.1",
     "lucide-react": "^0.344.0",
     "react": "^18.2.0",

@@ -21,7 +21,9 @@ A interface é hospedada na Vercel. O serviço atual em `services/churchService.
 
 Nenhuma credencial de IA é necessária para iniciar a interface atual. Não coloque chaves privadas em código de navegador, no Git ou em variáveis com prefixo `VITE_`.
 
-A integração privada com Drive, preparada em [backend/drive](backend/drive/README.md), ainda não substitui o serviço legado. Consentimento Google, API autenticada e ensaio real continuam pendentes.
+A nova integração com Drive, preparada em [backend/drive](backend/drive/README.md), ainda não substitui o serviço legado. O proprietário já autorizou e publicou o backend assinado. A API autenticada está preparada e testada localmente; faltam conectar a interface, atualizar a implantação do script e validar um envio real autorizado.
+
+O acervo novo será composto somente por materiais que podem ser compartilhados por link, conforme decisão do responsável. A pasta permanece privada. Cada novo envio deverá confirmar que o arquivo poderá ser lido por qualquer pessoa que receber seu link. Enviar, renomear e remover exigirá acesso de operador; o uso cotidiano não precisará de login Google. Essa migração ainda não está ativa na prévia.
 
 ## Cache e uso offline
 

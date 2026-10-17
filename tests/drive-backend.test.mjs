@@ -9,7 +9,7 @@ const secret = 'isolated-secret-never-used-outside-tests-0123456789';
 const root = 'isolated-root';
 const marker = 'univer-midia-v1';
 const owned = {id: 'owned-file', name: 'Aviso.mp4', parents: [root],
-  appProperties: {app: marker, kind: 'media', uploadedAt: new Date().toISOString(), preserve: '0'}};
+  appProperties: {app: marker, kind: 'media', sharing: 'link', uploadedAt: new Date().toISOString(), preserve: '0'}};
 function harness(responder = () => ({})) {
   const properties = new Map([['SERVER_SECRET', secret], ['ROOT_FOLDER_ID', root]]);
   const nonces = new Map(), calls = [];
@@ -88,18 +88,20 @@ test('trash is reversible and rename/preservation do not reset upload age or cha
 test('resumable session initialization sends only metadata and constrains folder, type and size', () => {
   const session = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&upload_id=isolated';
   const h = harness(() => ({headers: {Location: session}}));
-  const result = h.post({action: 'beginUpload', name: 'Vídeo.mp4', size: 1024, mimeType: 'video/mp4', eventName: 'Sábado'});
+  const result = h.post({action: 'beginUpload', name: 'Vídeo.mp4', size: 1024, mimeType: 'video/mp4', eventName: 'Sábado', shareByLink: true});
   assert.equal(result.status, 'success');
   assert.equal(result.data.sessionUrl, session);
   const metadata = JSON.parse(h.calls[0].options.payload);
   assert.deepEqual(metadata.parents, [root]);
   assert.equal(metadata.appProperties.app, marker);
+  assert.equal(metadata.appProperties.sharing, 'pending');
+  assert.equal(metadata.appProperties.expectedSize, '1024');
   assert.ok(Number.isFinite(Date.parse(metadata.appProperties.uploadedAt)));
   assert.equal(h.calls[0].options.headers['X-Upload-Content-Length'], '1024');
   assert.equal(metadata.bytes, undefined);
   const invalid = harness();
-  for (const value of [{size: 0}, {size: 2147483649}, {mimeType: 'video/mp4\r\nInjected: yes'}, {name: '\n'}]) {
-    assert.equal(invalid.post({action: 'beginUpload', name: 'Vídeo.mp4', size: 1024, mimeType: 'video/mp4', ...value}).status, 'error');
+  for (const value of [{size: 0}, {size: 2147483649}, {mimeType: 'video/mp4\r\nInjected: yes'}, {name: '\n'}, {shareByLink: false}]) {
+    assert.equal(invalid.post({action: 'beginUpload', name: 'Vídeo.mp4', size: 1024, mimeType: 'video/mp4', shareByLink: true, ...value}).status, 'error');
   }
   assert.equal(invalid.calls.length, 0);
 });
@@ -137,4 +139,62 @@ test('unsupported actions and upstream failures are generic and cannot purge fil
     assert.ok(!JSON.stringify(result).includes('private upstream'));
   }
   assert.ok(h.calls.every(call => call.options.method === 'get'));
+});
+
+test('publishing requires explicit confirmation, completed bytes and app ownership', () => {
+  const pending = {...owned, size: '1024', appProperties: {...owned.appProperties, sharing: 'pending', expectedSize: '1024'}};
+  const denied = harness(() => pending);
+  assert.equal(denied.post({action: 'publishUpload', id: owned.id}).status, 'error');
+  assert.equal(denied.calls.length, 0);
+  for (const invalid of [{...pending, size: '1023'}, {...pending, parents: ['another-folder']},
+    {...pending, appProperties: {...pending.appProperties, kind: 'root'}},
+    {...pending, appProperties: {...pending.appProperties, expectedSize: undefined}}]) {
+    const h = harness(() => invalid);
+    assert.equal(h.post({action: 'publishUpload', id: owned.id, confirmShare: true}).status, 'error');
+    assert.equal(h.calls.length, 1);
+    assert.equal(h.calls[0].options.method, 'get');
+  }
+});
+
+test('publishing grants only reader access to the individual file and retry is idempotent', () => {
+  const pending = {...owned, size: '1024', appProperties: {...owned.appProperties, sharing: 'pending', expectedSize: '1024'}};
+  let current = pending;
+  const h = harness((url, options) => {
+    if (url.includes('/permissions')) return options.method === 'get' ? {permissions: []} : {id: 'permission'};
+    if (options.method === 'patch') { current = {...current, appProperties: JSON.parse(options.payload).appProperties}; return {id: owned.id}; }
+    return current;
+  });
+  assert.equal(h.post({action: 'publishUpload', id: owned.id, confirmShare: true}).status, 'success');
+  const grant = h.calls.find(call => call.options.method === 'post');
+  assert.ok(grant.url.includes('/owned-file/permissions'));
+  assert.deepEqual(JSON.parse(grant.options.payload), {type: 'anyone', role: 'reader', allowFileDiscovery: false});
+  assert.ok(h.calls.every(call => !call.url.includes('/' + root + '/')));
+  const savedDate = current.appProperties.uploadedAt, previous = h.calls.length;
+  assert.equal(h.post({action: 'publishUpload', id: owned.id, confirmShare: true}).status, 'success');
+  assert.equal(h.calls.length, previous + 1);
+  assert.equal(current.appProperties.uploadedAt, savedDate);
+});
+
+test('login budget survives nonce-cache changes, expires, and fails closed for corrupt state', () => {
+  const h = harness();
+  for (let n = 0; n < 10; n++) assert.equal(h.post({action: 'claimLoginAttempt'}).data.allowed, true);
+  assert.equal(h.post({action: 'claimLoginAttempt'}).data.allowed, false);
+  const state = JSON.parse(h.properties.get('LOGIN_ATTEMPT_WINDOW'));
+  assert.equal(state.count, 10);
+  h.properties.set('LOGIN_ATTEMPT_WINDOW', JSON.stringify({...state, start: Date.now() - 600001}));
+  assert.equal(h.post({action: 'claimLoginAttempt'}).data.allowed, true);
+  for (const invalid of ['invalid', '{"start":0,"count":-1}', JSON.stringify({start: Date.now() + 60000, count: 0})]) {
+    h.properties.set('LOGIN_ATTEMPT_WINDOW', invalid);
+    assert.equal(h.post({action: 'claimLoginAttempt'}).status, 'error');
+  }
+  assert.equal(h.calls.length, 0);
+});
+
+test('text retrieval refuses pending, oversized and non-text files before reading bytes', () => {
+  for (const file of [{...owned, mimeType: 'video/mp4', size: '10'}, {...owned, mimeType: 'text/plain', size: '262145'},
+    {...owned, mimeType: 'text/plain', size: '10', appProperties: {...owned.appProperties, sharing: 'pending'}}]) {
+    const h = harness(() => file);
+    assert.equal(h.post({action: 'getText', id: owned.id}).status, 'error');
+    assert.equal(h.calls.length, 1);
+  }
 });
