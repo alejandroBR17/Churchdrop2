@@ -368,6 +368,7 @@ export default function App() {
       {/* Toast Notification */}
       {toast.show && (
         <Toast 
+          show={toast.show}
           message={toast.message} 
           type={toast.type} 
           duration={toast.duration} 
