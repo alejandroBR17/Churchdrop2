@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import JSZip from 'jszip';
+import {createZipDownload, zipEligibility} from './services/zipDownload';
 import { 
   Plus, Grid, List, Search, RefreshCw, Loader2, Sparkles, 
   Trash2, Edit3, Download, Eye, FileText, Video, Music, 
@@ -47,6 +47,13 @@ export default function App() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [zipProgress, setZipProgress] = useState<{done: number; total: number} | null>(null);
+  const [zipError, setZipError] = useState('');
+  const zipRequest = useRef<AbortController | null>(null);
+  useEffect(() => () => zipRequest.current?.abort(), []);
+  useEffect(() => setZipError(''), [selectedIds]);
+  const selectedItems = useMemo(() => items.filter(item => selectedIds.includes(item.id)), [items, selectedIds]);
+  const zipAvailability = zipEligibility(selectedItems);
   const [listError, setListError] = useState('');
   const listRequest = useRef<AbortController | null>(null);
   const [loadingStage, setLoadingStage] = useState<'idle' | 'stage1_cache' | 'stage2_server'>('idle');
@@ -164,6 +171,7 @@ export default function App() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'a') {
+        if (zipRequest.current) {e.preventDefault(); return;}
         if (!['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
           e.preventDefault();
           setSelectedIds(filteredItems.map(i => i.id));
@@ -222,16 +230,19 @@ export default function App() {
   // Selection Handlers
   const handleToggleSelect = (id: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
+    if (zipRequest.current) return;
     setSelectedIds(prev => 
       prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
     );
   };
 
   const handleSelectAll = () => {
+    if (zipRequest.current) return;
     setSelectedIds(filteredItems.map(i => i.id));
   };
 
   const handleClearSelection = () => {
+    if (zipRequest.current) return;
     setSelectedIds([]);
   };
 
@@ -254,7 +265,8 @@ export default function App() {
 
   // Bulk Download as ZIP
   const handleBulkDownload = async () => {
-    const selected = items.filter(i => selectedIds.includes(i.id));
+    if (zipRequest.current) return;
+    const selected = selectedItems;
     if (selected.length === 0) return;
 
     if (selected.length === 1) {
@@ -262,42 +274,29 @@ export default function App() {
       return;
     }
 
-    showToast(`Gerando arquivo ZIP de ${selected.length} itens...`, 'info');
-    const zip = new JSZip();
-
-    let count = 0;
-    for (const item of selected) {
+    const controller = new AbortController(); zipRequest.current = controller;
+    setZipError(''); setZipProgress({done: 0, total: selected.length});
+    try {
+      const blob = await createZipDownload(selected, {signal: controller.signal,
+        onProgress: (done, total) => setZipProgress({done, total})});
+      const href = URL.createObjectURL(blob), a = document.createElement('a');
       try {
-        const downloadUrl = item.downloadUrl || item.url;
-        if (downloadUrl) {
-          const res = await fetch(downloadUrl);
-          const blob = await res.blob();
-          zip.file(item.name, blob);
-          count++;
-        }
-      } catch (e) {
-        console.warn(`Não foi possível baixar ${item.name} diretamente para o ZIP:`, e);
-      }
-    }
-
-    if (count > 0) {
-      const zipBlob = await zip.generateAsync({ type: 'blob' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(zipBlob);
-      a.download = `UniverMidia_Pacote_${new Date().toISOString().slice(0, 10)}.zip`;
-      a.click();
-      showToast('Pacote ZIP gerado e pronto!', 'success');
-    } else {
-      showToast('Erro ao agrupar arquivos em ZIP.', 'error');
-    }
+        a.href = href; a.download = `UniverMidia_Pacote_${new Date().toISOString().slice(0, 10)}.zip`;
+        document.body.appendChild(a); a.click(); a.remove();
+      } finally {setTimeout(() => URL.revokeObjectURL(href), 15000);}
+      showToast('ZIP completo pronto para baixar.', 'success');
+    } catch (error) {
+      if (controller.signal.aborted) showToast('ZIP cancelado.', 'info');
+      else setZipError(error instanceof Error ? error.message : 'Não foi possível criar o ZIP. Baixe os arquivos individualmente.');
+    } finally {zipRequest.current = null; setZipProgress(null);}
   };
 
   // Bulk Copy Links
-  const handleBulkCopyLinks = () => {
+  const handleBulkCopyLinks = async () => {
     const selected = items.filter(i => selectedIds.includes(i.id));
     const links = selected.map(i => `${i.name}: ${i.downloadUrl || i.url}`).join('\n');
-    navigator.clipboard.writeText(links);
-    showToast(`${selected.length} links copiados!`, 'success');
+    try {await navigator.clipboard.writeText(links); showToast(`${selected.length} links copiados!`, 'success');}
+    catch {showToast('Não foi possível copiar os links. Tente novamente.', 'error');}
   };
 
   // Delete File Handler
@@ -651,6 +650,11 @@ export default function App() {
 
       {/* Floating Batch Action Toolbar */}
       <BatchActionBar 
+        downloadBusy={zipProgress !== null}
+        downloadStatus={zipProgress ? `Preparando ${zipProgress.done} de ${zipProgress.total} arquivos…` : undefined}
+        downloadNotice={zipError || (selectedIds.length > 1 ? zipAvailability.reason : '')}
+        downloadUnavailable={selectedIds.length > 1 && !zipAvailability.allowed}
+        onCancelDownload={() => zipRequest.current?.abort()}
         selectedCount={selectedIds.length}
         totalCount={filteredItems.length}
         onSelectAll={handleSelectAll}
