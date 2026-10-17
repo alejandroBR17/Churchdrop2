@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, Upload, Image as ImageIcon, Video, FileText, Music, Sparkles, 
   Check, AlertCircle, File, Loader2, Calendar, Tag
@@ -19,8 +19,6 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   onSuccess,
   showToast
 }) => {
-  if (!isOpen) return null;
-
   const [files, setFiles] = useState<File[]>([]);
   const [uploadDate, setUploadDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [eventName, setEventName] = useState<string>('');
@@ -31,6 +29,11 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   const [uploadProgress, setUploadProgress] = useState(0);
   const [currentFileName, setCurrentFileName] = useState('');
   const [isDragOver, setIsDragOver] = useState(false);
+  const [shareByLink, setShareByLink] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const request = useRef<AbortController>();
+  const prepared = useRef(new WeakMap<File, File>());
+  useEffect(() => () => request.current?.abort(), []);
 
   useEffect(() => {
     if (!isCustomEvent) {
@@ -38,6 +41,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
       setEventName(getServiceName(dateObj));
     }
   }, [uploadDate, isCustomEvent]);
+  if (!isOpen) return null;
 
   const presetEvents = [
     "Prosperidade com Deus",
@@ -53,6 +57,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   ];
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (isUploading) return;
     if (e.target.files) {
       const selected = Array.from(e.target.files);
       setFiles(prev => [...prev, ...selected]);
@@ -61,6 +66,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
+    if (isUploading) return;
     setIsDragOver(false);
     if (e.dataTransfer.files) {
       const dropped = Array.from(e.dataTransfer.files);
@@ -73,66 +79,75 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   };
 
   const handleStartUpload = async () => {
-    if (files.length === 0) {
+    if (isUploading) return;
+    if (files.length === 0 || !shareByLink) {
       showToast('Selecione pelo menos um arquivo para enviar!', 'error');
       return;
     }
 
     setIsUploading(true);
     setUploadProgress(0);
+    setUploadError('');
+    const controller = new AbortController(); request.current = controller;
+    const batch = [...files];
+    const remaining = new Set(batch);
 
     let successCount = 0;
-    let failCount = 0;
-
-    for (let i = 0; i < files.length; i++) {
-      let fileToUpload = files[i];
+    for (let i = 0; i < batch.length; i++) {
+      if (controller.signal.aborted) break;
+      let fileToUpload = prepared.current.get(batch[i]) || batch[i];
       setCurrentFileName(fileToUpload.name);
 
       // Compress images if enabled and file is an image > 1MB
-      if (compressImages && fileToUpload.type.startsWith('image/') && fileToUpload.size > 1024 * 1024) {
+      if (!prepared.current.has(batch[i]) && compressImages && fileToUpload.type.startsWith('image/') && fileToUpload.size > 1024 * 1024) {
         try {
           const options = {
             maxSizeMB: 2,
             maxWidthOrHeight: 1920,
-            useWebWorker: true
+            useWebWorker: true,
+            signal: controller.signal
           };
-          fileToUpload = await imageCompression(fileToUpload, options);
+          const compressed = await imageCompression(fileToUpload, options);
+          fileToUpload = new window.File([compressed], batch[i].name, {type: compressed.type, lastModified: batch[i].lastModified});
         } catch (err) {
-          console.warn('Compressão ignorada:', err);
+          if (controller.signal.aborted) break;
         }
       }
+      prepared.current.set(batch[i], fileToUpload);
 
       try {
         await uploadFileToScript(
           fileToUpload,
           eventName,
           (pct) => {
-            const overallPct = Math.floor(((i + (pct / 100)) / files.length) * 100);
+            const overallPct = Math.floor(((i + (pct / 100)) / batch.length) * 100);
             setUploadProgress(overallPct);
-          }
+          },
+          {signal: controller.signal, shareByLink}
         );
         successCount++;
+        remaining.delete(batch[i]);
       } catch (err) {
-        console.error('Erro no upload:', err);
-        failCount++;
+        if (!controller.signal.aborted) setUploadError(err instanceof Error ? err.message : 'Falha no envio.');
+        break; // Keep this and later files for retry; do not silently discard partial failures.
       }
     }
 
     setIsUploading(false);
+    setFiles([...remaining]);
 
     if (successCount > 0) {
       showToast(`${successCount} arquivo(s) enviado(s) com sucesso!`, 'success');
       onSuccess();
-      onClose();
-      setFiles([]);
+      if (remaining.size === 0) {setShareByLink(false); onClose();}
     } else {
-      showToast('Falha ao enviar arquivo(s). Verifique sua conexão.', 'error');
+      showToast(controller.signal.aborted ? 'Envio pausado. Tente novamente mantendo esta página aberta.' : 'O envio não terminou. Os arquivos continuam na lista.', 'info');
     }
   };
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative w-full max-w-lg bg-white dark:bg-neutral-900 rounded-3xl shadow-2xl border border-neutral-200/80 dark:border-neutral-800/80 overflow-hidden flex flex-col max-h-[90vh]">
+      <div role="dialog" aria-modal="true" aria-labelledby="upload-title" className="relative w-full max-w-lg bg-white dark:bg-neutral-900 rounded-3xl shadow-2xl border border-neutral-200/80 dark:border-neutral-800/80 overflow-hidden flex flex-col max-h-[90vh]">
         
         {/* Modal Header */}
         <div className="p-5 border-b border-neutral-100 dark:border-neutral-800/80 flex items-center justify-between bg-neutral-50/50 dark:bg-neutral-900/50">
@@ -141,12 +156,13 @@ export const UploadModal: React.FC<UploadModalProps> = ({
               <Upload size={20} />
             </div>
             <div>
-              <h2 className="text-base font-bold text-neutral-900 dark:text-white">Enviar Nova Mídia</h2>
+              <h2 id="upload-title" className="text-base font-bold text-neutral-900 dark:text-white">Enviar Nova Mídia</h2>
               <p className="text-xs text-neutral-500">Transfira fotos, vídeos e textos para a técnica</p>
             </div>
           </div>
           <button 
             onClick={onClose} 
+            aria-label="Fechar envio"
             disabled={isUploading}
             className="p-2 text-neutral-400 hover:text-neutral-700 dark:hover:text-white rounded-xl transition-colors disabled:opacity-50"
           >
@@ -164,6 +180,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
                 <Calendar size={13} /> Data do Culto
               </label>
               <input 
+                disabled={isUploading}
                 type="date" 
                 value={uploadDate} 
                 onChange={(e) => setUploadDate(e.target.value)}
@@ -176,7 +193,9 @@ export const UploadModal: React.FC<UploadModalProps> = ({
                 <Tag size={13} /> Nome do Evento
               </label>
               <input 
+                disabled={isUploading}
                 type="text" 
+                maxLength={100}
                 value={eventName} 
                 onChange={(e) => {
                   setEventName(e.target.value);
@@ -196,6 +215,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
             <div className="flex flex-wrap gap-1.5">
               {presetEvents.map(preset => (
                 <button
+                  disabled={isUploading}
                   key={preset}
                   onClick={() => {
                     const dateObj = new Date(uploadDate + 'T12:00:00');
@@ -225,6 +245,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
             <input 
               type="file" 
               multiple 
+              disabled={isUploading}
               onChange={handleFileChange}
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             />
@@ -248,17 +269,24 @@ export const UploadModal: React.FC<UploadModalProps> = ({
                   Otimizar Imagens Automaticamente
                 </span>
                 <span className="block text-[10px] text-neutral-400">
-                  Reduz o tamanho de fotos grandes para envio instantâneo
+                  Reduz fotos grandes antes do envio
                 </span>
               </div>
             </div>
             <input 
               type="checkbox" 
+              disabled={isUploading}
               checked={compressImages}
               onChange={(e) => setCompressImages(e.target.checked)}
               className="w-4 h-4 text-univer-blue rounded border-neutral-300 focus:ring-univer-blue cursor-pointer"
             />
           </div>
+
+          <label className="flex items-start gap-3 p-4 rounded-2xl border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/30 text-sm text-neutral-700 dark:text-neutral-200">
+            <input type="checkbox" checked={shareByLink} disabled={isUploading} onChange={e => setShareByLink(e.target.checked)} className="mt-1 shrink-0"/>
+            <span>Estes materiais podem ser compartilhados por link.<span className="block mt-1 text-xs text-neutral-500 dark:text-neutral-400">Qualquer pessoa que receber o link poderá abrir e repassá-lo. Não envie documentos ou conteúdos sigilosos. A pasta da conta continua privada.</span></span>
+          </label>
+          {uploadError && <p role="alert" className="text-sm text-rose-600 dark:text-rose-300">{uploadError} Tente novamente sem fechar esta página para retomar o envio ou confirmar a publicação.</p>}
 
           {/* Selected Files Queue List */}
           {files.length > 0 && (
@@ -266,6 +294,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
               <div className="flex items-center justify-between text-xs font-bold text-neutral-500">
                 <span>Arquivos Selecionados ({files.length})</span>
                 <button 
+                  disabled={isUploading}
                   onClick={() => setFiles([])}
                   className="text-rose-500 hover:underline text-[11px]"
                 >
@@ -292,6 +321,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
                         {(file.size / (1024 * 1024)).toFixed(1)} MB
                       </span>
                       <button 
+                        disabled={isUploading}
                         onClick={() => removeFile(idx)}
                         className="text-neutral-400 hover:text-rose-500 p-1"
                       >
@@ -307,10 +337,10 @@ export const UploadModal: React.FC<UploadModalProps> = ({
           {/* Upload Progress Bar */}
           {isUploading && (
             <div className="space-y-2 p-3 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/50 rounded-2xl">
-              <div className="flex items-center justify-between text-xs font-bold text-blue-700 dark:text-blue-300">
-                <span className="flex items-center gap-2">
+              <div role="status" className="flex items-center justify-between gap-2 text-xs font-bold text-blue-700 dark:text-blue-300">
+                <span className="flex min-w-0 items-center gap-2">
                   <Loader2 size={14} className="animate-spin" />
-                  <span>Enviando {currentFileName}...</span>
+                  <span className="min-w-0 break-all">{uploadProgress >= 99 ? 'Confirmando envio e publicação' : 'Enviando'}: {currentFileName}</span>
                 </span>
                 <span>{uploadProgress}%</span>
               </div>
@@ -328,15 +358,14 @@ export const UploadModal: React.FC<UploadModalProps> = ({
         {/* Modal Footer CTA */}
         <div className="p-4 border-t border-neutral-100 dark:border-neutral-800/80 bg-neutral-50/50 dark:bg-neutral-900/50 flex items-center justify-end gap-2">
           <button 
-            onClick={onClose}
-            disabled={isUploading}
+            onClick={() => isUploading ? request.current?.abort() : onClose()}
             className="px-4 py-2.5 rounded-xl text-xs font-bold text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors disabled:opacity-50"
           >
-            Cancelar
+            {isUploading ? 'Pausar envio' : 'Fechar'}
           </button>
           <button 
             onClick={handleStartUpload}
-            disabled={isUploading || files.length === 0}
+            disabled={isUploading || files.length === 0 || !shareByLink}
             className="flex items-center gap-2 bg-univer-blue hover:bg-blue-600 text-white font-bold text-xs px-6 py-2.5 rounded-xl transition-all shadow-md shadow-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isUploading ? (

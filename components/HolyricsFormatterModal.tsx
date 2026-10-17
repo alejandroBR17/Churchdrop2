@@ -33,8 +33,6 @@ export const HolyricsFormatterModal: React.FC<HolyricsFormatterModalProps> = ({
   onClose,
   showToast
 }) => {
-  if (!isOpen) return null;
-
   const [rawText, setRawText] = useState('');
   const [formattedText, setFormattedText] = useState('');
   const [copied, setCopied] = useState(false);
@@ -216,6 +214,7 @@ export const HolyricsFormatterModal: React.FC<HolyricsFormatterModalProps> = ({
     showToast('Exemplo de louvor carregado e formatado!', 'info');
   };
 
+  if (!isOpen) return null;
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="relative w-full max-w-3xl bg-white dark:bg-neutral-900 rounded-3xl shadow-2xl border border-neutral-200/80 dark:border-neutral-800/80 overflow-hidden flex flex-col max-h-[92vh]">
@@ -236,7 +235,7 @@ export const HolyricsFormatterModal: React.FC<HolyricsFormatterModalProps> = ({
               <p className="text-xs text-neutral-500">Limpe emojis, marcadores e divida a letra em slides prontos para a igreja</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 text-neutral-400 hover:text-neutral-700 dark:hover:text-white rounded-xl transition-colors">
+          <button aria-label="Fechar formatador" onClick={onClose} className="p-2 text-neutral-400 hover:text-neutral-700 dark:hover:text-white rounded-xl transition-colors">
             <X size={20} />
           </button>
         </div>

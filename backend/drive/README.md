@@ -7,7 +7,7 @@ Estado verificado em 17/10/2026: o responsável autorizou o consentimento Google
 
 ## Arquitetura
 
-1. O navegador deverá autenticar-se na API do app com código de operador, com sessão temporária para aparelhos emprestados. Os handlers estão preparados; a interface ainda será conectada.
+1. O navegador autentica-se na API do app com código de operador, com sessão temporária para aparelhos emprestados. Interface e handlers foram conectados e ensaiados com respostas isoladas; ativação real ainda pendente.
 2. A API da Vercel valida sessão, origem e limites antes de assinar um pedido ao Apps Script.
 3. O Apps Script verifica HMAC SHA-256, validade de cinco minutos e nonce, e limita operações à pasta e aos marcadores do app.
 4. Para upload, cria uma sessão do Drive e devolve apenas a URL dessa sessão. O token OAuth do proprietário permanece no script.
@@ -46,7 +46,7 @@ Direção aprovada: padrão 14 dias, configurável 7/14, somente envios próprio
 
 Nesta etapa `retentionPreview` **somente calcula candidatos**. Não há gatilho, limpeza em lote ou exclusão automática ativa. `trash` é uma ação individual reversível e verifica pasta/marcadores. Não existe ação de exclusão permanente. O Google pode eliminar automaticamente itens após o prazo da lixeira; lixeira não é backup permanente e continua consumindo espaço enquanto contém os arquivos.
 
-Antes da ativação: conectar API/sessões à interface, configurar o código de acesso privadamente, atualizar a versão Google, implementar confirmação de compartilhamento e tratamento de falhas, validar CORS/Range da sessão num envio real autorizado. Retenção/preservação ainda precisam de interface; não ativar limpeza automática por ter concluído a migração de upload. Os testes locais não validam essas operações reais.
+Antes da ativação: configurar o código de acesso privadamente, atualizar a versão Google e validar CORS/Range da sessão num envio real autorizado. Entrada/saída, confirmação de compartilhamento e recuperação de publicação foram implementadas e ensaiadas isoladamente. Retenção/preservação ainda precisam de interface; não ativar limpeza automática por ter concluído a migração de upload. Os testes locais não validam essas operações reais.
 
 ## Ponte do servidor
 
@@ -58,7 +58,7 @@ Somente um handler autenticado deve usar essa ponte: ela **não implementa login
 
 O responsável confirmou que usará **somente materiais compartilháveis por link**. Não será necessário login Google cotidiano nem um segundo cadastro. A abertura no Drive será opcional. A autorização Google do proprietário continua necessária no setup e já foi feita.
 
-`beginUpload` exige `shareByLink=true` e cria arquivo pendente, privado. Após concluir os bytes, `publishUpload` exige nova indicação explícita `confirmShare=true`, verifica pasta, marcadores e tamanho efetivamente gravado e concede **somente leitura a qualquer pessoa com o link**, sem descoberta pública. A pasta nunca é compartilhada. A lista normal oculta envios pendentes; eles são identificados separadamente para futura recuperação. Não há publicação em lote de arquivos antigos. A interface ainda deve mostrar essa confirmação antes do envio e tratar falha na publicação sem duplicar o arquivo.
+`beginUpload` exige `shareByLink=true` e cria arquivo pendente, privado. Após concluir os bytes, `publishUpload` exige nova indicação explícita `confirmShare=true`, verifica pasta, marcadores e tamanho efetivamente gravado e concede **somente leitura a qualquer pessoa com o link**, sem descoberta pública. A pasta nunca é compartilhada. A lista normal oculta envios pendentes; eles são identificados separadamente para futura recuperação. Não há publicação em lote de arquivos antigos. A interface mostra essa confirmação antes do envio e retém a sessão na memória para recuperar uma publicação sem reenviar bytes concluídos.
 
 O link pode ser repassado por quem o receber: o código de operador protege gerenciamento, não torna privado um material já compartilhado. Não guardar documentos sigilosos nesse fluxo. Bytes de vídeo não devem passar pela Function; o navegador usa a sessão retomável do Drive, sem receber OAuth do proprietário. Referências: [compartilhamento Google](https://support.google.com/drive/answer/2494822?hl=pt-BR) e [limites de Functions](https://vercel.com/docs/functions/limitations).
 

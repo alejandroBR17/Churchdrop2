@@ -27,7 +27,7 @@ import { MobileSidebarDrawer } from './components/MobileSidebarDrawer';
 import { MediaItem, MediaType, ToastState, ViewMode } from './types';
 import { 
   fetchFilesFromScript, deleteFileFromScript, renameFileInScript, 
-  getCachedFiles, groupItemsByEvent 
+  getCachedFiles, groupItemsByEvent, fetchTextContent
 } from './services/churchService';
 
 const GOLD_TEXT_CLASS = "text-amber-600 dark:text-univer-gold";
@@ -35,8 +35,8 @@ const GOLD_TEXT_CLASS = "text-amber-600 dark:text-univer-gold";
 export default function App() {
   // Theme & Layout State
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
-    return localStorage.getItem('theme') === 'dark' || 
-      (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    try { const theme = localStorage.getItem('theme'); return theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches); }
+    catch {return window.matchMedia('(prefers-color-scheme: dark)').matches;}
   });
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [activeFilter, setActiveFilter] = useState<MediaType | 'all'>('all');
@@ -99,10 +99,10 @@ export default function App() {
   useEffect(() => {
     if (isDarkMode) {
       document.documentElement.classList.add('dark');
-      localStorage.setItem('theme', 'dark');
+      try {localStorage.setItem('theme', 'dark');} catch {}
     } else {
       document.documentElement.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
+      try {localStorage.setItem('theme', 'light');} catch {}
     }
   }, [isDarkMode]);
 
@@ -144,7 +144,7 @@ export default function App() {
     } catch {
       if (listRequest.current !== request || request.signal.aborted) return;
       setListError(cached.length > 0
-        ? 'Não foi possível atualizar. Você está vendo a última lista salva neste navegador.'
+        ? 'Não foi possível atualizar. Você está vendo a última lista desta sessão.'
         : 'Não foi possível carregar os arquivos. Verifique sua conexão e tente novamente.');
     } finally {
       if (listRequest.current === request && !request.signal.aborted) {
@@ -244,6 +244,7 @@ export default function App() {
     const link = document.createElement('a');
     link.href = url;
     link.target = '_blank';
+    link.rel = 'noopener noreferrer';
     link.download = '';
     document.body.appendChild(link);
     link.click();
@@ -344,9 +345,12 @@ export default function App() {
   };
 
   // Open Media or Play Audio
-  const handleViewMedia = (item: MediaItem) => {
+  const handleViewMedia = async (item: MediaItem) => {
     if (item.type === 'audio') {
       setActiveAudioItem(item);
+    } else if (item.type === 'text') {
+      try { const textContent = await fetchTextContent(item.id); setViewerItem({...item, textContent}); }
+      catch {showToast('Não foi possível abrir o texto. Tente novamente.', 'error');}
     } else {
       setViewerItem(item);
     }

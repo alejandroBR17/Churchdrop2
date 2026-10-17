@@ -15,14 +15,13 @@ export const RenameModal: React.FC<RenameModalProps> = ({
   onConfirm,
   showToast
 }) => {
-  if (!item) return null;
-
-  const [newName, setNewName] = useState(item.name);
+  const [newName, setNewName] = useState(item?.name || '');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    setNewName(item.name);
+    setNewName(item?.name || '');
   }, [item]);
+  if (!item) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

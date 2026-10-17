@@ -27,8 +27,6 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
   onDownload,
   showToast
 }) => {
-  if (!item) return null;
-
   // Image Zoom & Rotate Controls
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
@@ -49,6 +47,7 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
   const [touchEndX, setTouchEndX] = useState(0);
 
   useEffect(() => {
+    if (!item) return;
     // Reset state on media item change
     setZoom(1);
     setRotation(0);
@@ -66,6 +65,7 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [item, hasNext, hasPrev]);
+  if (!item) return null;
 
   const handleCopyText = (content?: string) => {
     if (!content) return;
@@ -164,7 +164,7 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
           {/* Drive Direct Link if ID exists */}
           {item.id && !item.id.startsWith('temp_') && (
             <button 
-              onClick={() => window.open(`https://drive.google.com/file/d/${item.id}/view`, '_blank')}
+              onClick={() => window.open(`https://drive.google.com/file/d/${encodeURIComponent(item.id)}/view`, '_blank', 'noopener,noreferrer')}
               className="p-2 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors text-xs font-semibold hidden sm:flex items-center gap-1.5"
               title="Abrir no Google Drive"
             >
@@ -219,7 +219,7 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
                 <div className="flex justify-center gap-3">
                   {!item.id.startsWith('temp_') && (
                     <button 
-                      onClick={() => window.open(`https://drive.google.com/file/d/${item.id}/view`, '_blank')}
+                      onClick={() => window.open(`https://drive.google.com/file/d/${encodeURIComponent(item.id)}/view`, '_blank', 'noopener,noreferrer')}
                       className="px-4 py-2 bg-white text-black font-bold rounded-xl text-xs hover:bg-neutral-200 transition-colors"
                     >
                       Abrir no Google Drive

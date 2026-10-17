@@ -51,7 +51,7 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <header className="sticky top-0 z-30 bg-white/90 dark:bg-neutral-900/90 backdrop-blur-md border-b border-neutral-200/80 dark:border-neutral-800/80 transition-colors">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           
           {/* Logo Mobile / Title */}
           <div className="flex items-center gap-3 shrink-0 md:hidden">
@@ -71,7 +71,7 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           {/* Search bar */}
-          <div className="flex-1 max-w-xl relative">
+          <div className="order-last w-full basis-full xl:order-none xl:basis-0 xl:w-auto xl:flex-1 min-w-0 max-w-xl relative">
             <div className="relative flex items-center">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400" size={18} />
               <input
@@ -93,7 +93,7 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           {/* Action Tools */}
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex flex-1 min-w-0 flex-wrap items-center justify-end gap-2">
             {/* Multi-selection pill if items selected */}
             {selectedCount > 0 ? (
               <div className="flex items-center gap-2 bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800/60 px-3 py-1.5 rounded-xl text-xs font-semibold text-blue-600 dark:text-blue-400 animate-in fade-in">

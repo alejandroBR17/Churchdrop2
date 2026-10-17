@@ -3,7 +3,7 @@ import {
   X, HardDrive, Database, RefreshCw, Trash2, ShieldCheck, 
   Activity, CheckCircle2, AlertTriangle, Layers
 } from 'lucide-react';
-import { API_URL } from '../services/churchService';
+import {clearLibraryCache, fetchFilesFromScript} from '../services/churchService';
 
 interface StorageStatsModalProps {
   isOpen: boolean;
@@ -28,17 +28,16 @@ export const StorageStatsModal: React.FC<StorageStatsModalProps> = ({
   showToast,
   onRefresh
 }) => {
-  if (!isOpen) return null;
-
   const [pinging, setPinging] = useState(false);
   const [latency, setLatency] = useState<number | null>(null);
+  if (!isOpen) return null;
 
   const testConnection = async () => {
     setPinging(true);
     setLatency(null);
     const start = Date.now();
     try {
-      await fetch(`${API_URL}?t=${Date.now()}`);
+      await fetchFilesFromScript();
       const duration = Date.now() - start;
       setLatency(duration);
       showToast(`Conexão OK! Latência: ${duration}ms`, 'success');
@@ -50,7 +49,7 @@ export const StorageStatsModal: React.FC<StorageStatsModalProps> = ({
   };
 
   const clearCache = () => {
-    localStorage.removeItem('churchdrop_files_cache');
+    clearLibraryCache();
     showToast('Cache local limpo! Atualizando arquivos...', 'info');
     onRefresh();
     onClose();
@@ -68,7 +67,7 @@ export const StorageStatsModal: React.FC<StorageStatsModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-bold text-neutral-900 dark:text-white">Diagnóstico do Servidor</h2>
-              <p className="text-xs text-neutral-500">Status de armazenamento e integridade do banco</p>
+              <p className="text-xs text-neutral-500">Leitura do Drive e contagem da biblioteca carregada</p>
             </div>
           </div>
           <button onClick={onClose} className="p-2 text-neutral-400 hover:text-neutral-700 dark:hover:text-white rounded-xl transition-colors">
@@ -85,10 +84,10 @@ export const StorageStatsModal: React.FC<StorageStatsModalProps> = ({
               <CheckCircle2 size={24} className="text-emerald-500 shrink-0" />
               <div>
                 <span className="block text-xs font-bold text-emerald-900 dark:text-emerald-200">
-                  Google Drive Cloud Integrado
+                  Conexão com o Google Drive
                 </span>
                 <span className="block text-[10px] text-emerald-700 dark:text-emerald-400">
-                  Sincronização em tempo real ativa
+                  Use Testar leitura para conferir a conexão agora
                 </span>
               </div>
             </div>
@@ -97,7 +96,7 @@ export const StorageStatsModal: React.FC<StorageStatsModalProps> = ({
               disabled={pinging}
               className="px-3 py-1.5 bg-white dark:bg-neutral-900 border border-emerald-300 dark:border-emerald-700 rounded-xl text-xs font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors"
             >
-              {pinging ? 'Testando...' : latency !== null ? `${latency}ms` : 'Testar Ping'}
+              {pinging ? 'Testando...' : latency !== null ? `${latency}ms` : 'Testar leitura'}
             </button>
           </div>
 
