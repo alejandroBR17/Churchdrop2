@@ -13,6 +13,8 @@ npm run dev
 
 Para compilar: `npm run build`. A saída é `dist`.
 
+Verificações locais: `npm run typecheck` e `npm test`. Os testes de leitura usam respostas isoladas; não operam no Google Drive.
+
 ## Serviços e dados
 
 A interface é hospedada na Vercel. O serviço atual em `services/churchService.ts` continua usando Google Apps Script e Google Drive. Publicar a interface não transfere os arquivos do Drive nem a propriedade do script. As instruções históricas de backend precisam ser revisadas antes de alterar o serviço remoto.

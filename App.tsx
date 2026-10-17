@@ -25,7 +25,6 @@ import { MobileBottomNav } from './components/MobileBottomNav';
 import { MobileSidebarDrawer } from './components/MobileSidebarDrawer';
 
 import { MediaItem, MediaType, ToastState, ViewMode } from './types';
-import { MOCK_MEDIA } from './constants';
 import { 
   fetchFilesFromScript, deleteFileFromScript, renameFileInScript, 
   getCachedFiles, groupItemsByEvent 
@@ -48,6 +47,8 @@ export default function App() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [listError, setListError] = useState('');
+  const listRequest = useRef<AbortController | null>(null);
   const [loadingStage, setLoadingStage] = useState<'idle' | 'stage1_cache' | 'stage2_server'>('idle');
   const [visibleItemLimit, setVisibleItemLimit] = useState<number>(12);
 
@@ -118,13 +119,16 @@ export default function App() {
 
   // Fetch Files with Step 1/2 Loading Architecture
   const loadFiles = async (showLoadingSpinner = true) => {
+    listRequest.current?.abort();
+    const request = new AbortController();
+    listRequest.current = request;
     if (showLoadingSpinner) setIsLoading(true);
     setIsRefreshing(true);
+    setListError('');
     setLoadingStage('stage1_cache');
-
+    const cached = getCachedFiles();
     try {
       // Step 1: Rapid Cache Hydration
-      const cached = getCachedFiles();
       if (cached.length > 0) {
         setItems(cached);
         if (showLoadingSpinner) setIsLoading(false);
@@ -132,26 +136,28 @@ export default function App() {
 
       // Step 2: Background Server Sync
       setLoadingStage('stage2_server');
-      const freshFiles = await fetchFilesFromScript();
-      if (freshFiles.length > 0) {
-        setItems(freshFiles);
-        showToast('Sincronização com o servidor concluída com sucesso!', 'success', 2500);
-      } else if (cached.length === 0) {
-        // Fallback mock data if server has 0 files or first setup
-        setItems(MOCK_MEDIA);
-      }
-    } catch (e) {
-      console.error('Erro ao buscar mídias:', e);
-      showToast('Exibindo arquivos cacheados do armazenamento local.', 'info');
+      const freshFiles = await fetchFilesFromScript(request.signal);
+      if (listRequest.current !== request || request.signal.aborted) return;
+      setItems(freshFiles);
+      setSelectedIds(previous => previous.filter(id => freshFiles.some(file => file.id === id)));
+      if (!showLoadingSpinner) showToast('Lista atualizada.', 'success', 2500);
+    } catch {
+      if (listRequest.current !== request || request.signal.aborted) return;
+      setListError(cached.length > 0
+        ? 'Não foi possível atualizar. Você está vendo a última lista salva neste navegador.'
+        : 'Não foi possível carregar os arquivos. Verifique sua conexão e tente novamente.');
     } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-      setLoadingStage('idle');
+      if (listRequest.current === request && !request.signal.aborted) {
+        setIsLoading(false);
+        setIsRefreshing(false);
+        setLoadingStage('idle');
+      }
     }
   };
 
   useEffect(() => {
     loadFiles();
+    return () => listRequest.current?.abort();
   }, []);
 
   // Keyboard Shortcuts Listener
@@ -502,6 +508,11 @@ export default function App() {
             </button>
           </div>
 
+          {listError && <div role="status" className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+            <p className="min-w-0 flex-1">{listError}</p>
+            <button type="button" disabled={isRefreshing} onClick={() => loadFiles(false)} className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-current px-3 py-2 font-semibold disabled:opacity-50"><RefreshCw size={16}/>Tentar novamente</button>
+          </div>}
+
           {/* Loading Skeleton */}
           {isLoading ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -520,20 +531,22 @@ export default function App() {
                 <Search size={32} />
               </div>
               <h3 className="text-base font-bold text-neutral-800 dark:text-neutral-200 mb-1">
-                Nenhum arquivo encontrado
+                {listError && items.length === 0 ? 'Biblioteca indisponível' : 'Nenhum arquivo encontrado'}
               </h3>
               <p className="text-xs text-neutral-400 max-w-xs mb-6">
-                {searchTerm 
+                {listError && items.length === 0
+                  ? 'Use Tentar novamente para consultar os arquivos no servidor.'
+                  : searchTerm
                   ? `Nenhum resultado para "${searchTerm}". Tente buscar outro termo.`
                   : 'A biblioteca de mídias está vazia. Comece enviando novos arquivos.'}
               </p>
-              <button
+              {!listError && <button
                 onClick={() => setShowUploadModal(true)}
                 className="flex items-center gap-2 bg-univer-blue hover:bg-blue-600 text-white font-bold text-xs px-5 py-2.5 rounded-xl transition-all shadow-md shadow-blue-500/20"
               >
                 <Plus size={16} />
                 <span>Enviar Primeira Mídia</span>
-              </button>
+              </button>}
             </div>
           ) : (
             /* Media Cards Accordions grouped by Event */

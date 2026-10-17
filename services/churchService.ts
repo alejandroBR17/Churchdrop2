@@ -1,3 +1,4 @@
+import { fetchDriveFiles, mapDriveFiles, readDriveFiles } from './fileList';
 import { MediaItem, MediaType } from '../types';
 
 // =========================================================================================
@@ -226,86 +227,18 @@ export const uploadFileToScript = async (
   });
 };
 
-export const fetchFilesFromScript = async (): Promise<MediaItem[]> => {
-  if (!API_URL) return [];
-  
-  const cachedData = localStorage.getItem(CACHE_KEY);
-  let localItems: MediaItem[] = [];
-  
-  if (cachedData) {
-    try {
-      const parsedCache = JSON.parse(cachedData);
-      localItems = mapResponseToMediaItems(parsedCache);
-    } catch (e) {
-      console.error("Cache corrompido");
-    }
-  }
-
-  try {
-    const response = await fetch(`${API_URL}?t=${Date.now()}`); 
-    const text = await response.text();
-    
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch (e) {
-      console.error("Recebi HTML em vez de JSON.", text);
-      throw new Error("Erro de conexão com o banco de dados.");
-    }
-    
-    if (data.status === 'success' && Array.isArray(data.files)) {
-       localStorage.setItem(CACHE_KEY, JSON.stringify(data.files));
-       return mapResponseToMediaItems(data.files);
-    }
-    return localItems.length > 0 ? localItems : [];
-  } catch (error) {
-    console.error("Falha ao buscar lista de arquivos.", error);
-    if (localItems.length > 0) return localItems;
-    return [];
-  }
-};
-
-const mapResponseToMediaItems = (rawFiles: any[]): MediaItem[] => {
-  return rawFiles.map((f: any) => {
-     // Lógica de URL CORRIGIDA
-     let previewUrl = "";
-     let downloadUrl = f.downloadUrl;
-
-     if (!downloadUrl && f.id) {
-        // Link direto de download para fallback
-        downloadUrl = `https://drive.google.com/uc?export=download&id=${f.id}`;
-     }
-          if (f.id) {
-        // Tenta usar a URL de thumbnail fornecida pelo Drive, se existir
-        if (f.thumbnailLink) {
-             previewUrl = f.thumbnailLink;
-        } else if (f.mimeType.includes('image')) {
-             previewUrl = `https://lh3.googleusercontent.com/d/${f.id}=s1000`;
-        } else if (f.mimeType.includes('video')) {
-             // Endpoint de thumbnail de vídeo do Drive
-             previewUrl = `https://lh3.googleusercontent.com/d/${f.id}=s1000`;
-        }
-      }
-
-      return {
-        id: f.id,
-        name: f.name,
-        url: previewUrl, 
-        downloadUrl: downloadUrl || "",
-        type: f.mimeType.includes('video') ? 'video' : f.mimeType.includes('audio') ? 'audio' : f.mimeType.includes('pdf') ? 'pdf' : f.mimeType.includes('text') ? 'text' : 'image',
-        size: 'Drive', 
-        date: new Date(f.date), 
-        eventName: f.folderName || "Geral"
-      };
-   });
+export const fetchFilesFromScript = async (signal?: AbortSignal): Promise<MediaItem[]> => {
+  if (!API_URL) throw new Error('O serviço de arquivos não está configurado.');
+  const files = await fetchDriveFiles(`${API_URL}?t=${Date.now()}`, {signal});
+  // Cache failure must not turn a valid server response into a network error.
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify(files)); } catch { /* Storage can be full or disabled. */ }
+  return mapDriveFiles(files);
 };
 
 export const getCachedFiles = (): MediaItem[] => {
-    const cachedData = localStorage.getItem(CACHE_KEY);
-    if (cachedData) {
-        try {
-            return mapResponseToMediaItems(JSON.parse(cachedData));
-        } catch(e) { return []; }
-    }
-    return [];
-}
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    const files = raw ? readDriveFiles(JSON.parse(raw)) : null;
+    return files ? mapDriveFiles(files) : [];
+  } catch { return []; }
+};

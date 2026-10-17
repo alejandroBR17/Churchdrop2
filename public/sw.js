@@ -1,4 +1,4 @@
-const CACHE_NAME = "churchdrop-v9";
+const CACHE_NAME = "univer-midia-v10-file-list";
 const ASSETS_TO_CACHE = ["/", "/index.html", "/manifest.json"];
 
 self.addEventListener("install", (event) => {
