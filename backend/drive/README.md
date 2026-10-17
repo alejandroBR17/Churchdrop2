@@ -3,6 +3,8 @@
 Esta integração está em preparação e **ainda não substitui o backend legado**.
 Os testes usam adaptadores isolados, sem operar arquivos reais do Google.
 
+Estado verificado em 17/10/2026: o responsável autorizou o consentimento Google e a implantação do web app assinado. `initializeStorage` concluiu com sucesso. Publicação v1 concluída; uma consulta assinada real retornou pasta vazia e um GET anônimo foi recusado. Nenhum arquivo foi enviado, renomeado ou removido nessa conferência. URL/chave foram guardadas como segredos somente no Preview do projeto `univer-midia`. `UNIVER_DRIVE_ENABLED=false` mantém a ligação pela aplicação desativada até revisar API/sessões e entrega dos arquivos privados. Não substituir a API legada apenas por ter passado esta consulta.
+
 ## Arquitetura
 
 1. O navegador deverá autenticar-se na API do app (a implementar), com sessão temporária para aparelhos emprestados.
@@ -14,14 +16,16 @@ Os testes usam adaptadores isolados, sem operar arquivos reais do Google.
 **Não chamar o script diretamente no navegador e nunca incluir o segredo no bundle/VITE_.**
 A verificação de nonce usa Script Cache e um lock. Cache pode ser evicto; não constitui garantia durável de execução única. A API deve criar novo nonce por tentativa e não repetir cegamente operações de escrita com resultado incerto.
 
-## Google: etapas ainda pendentes
+## Configuração Google e próximos passos
+
+Os passos de criação, configuração privada, consentimento, inicialização e implantação já foram executados no projeto separado com autorização do responsável. A relação abaixo documenta as condições para manutenção/reprodução; não recriar pasta ou script para continuar esta revisão.
 
 - O novo script separado foi criado na conta indicada pelo responsável; não usar o script legado como destino.
 - Fonte: `Code.gs`; manifesto: `appsscript.json`. Usar projeto Cloud padrão gerenciado pelo Apps Script; nenhuma migração de projetos Cloud antigos.
 - Configurar privadamente a propriedade `SERVER_SECRET` com pelo menos 32 caracteres aleatórios e a mesma chave somente no servidor da Vercel.
 - Revisar consentimento Google: `drive.file` permite arquivos criados/abertos especificamente com o app; `script.external_request` permite a comunicação com a API do Drive. Não solicitar acesso a todo o Drive.
 - Após aprovação, executar `initializeStorage` uma vez. Ela cria uma pasta nova e privada e guarda `ROOT_FOLDER_ID`; não importa nem apaga arquivos antigos. Reexecuções com raiz configurada não criam outra pasta.
-- Publicação do web app, executando como proprietário, só depois de aprovar a exposição do endpoint protegido por HMAC e preparar a API autenticada. Sem segredo válido, todas as solicitações são recusadas.
+- Publicação do web app, executando como proprietário, exige aprovação específica da exposição do endpoint protegido por HMAC. Sem segredo válido, todas as solicitações são recusadas. A interface só deverá ser ligada quando a API autenticada estiver pronta.
 - O serviço avançado Drive v3 no manifesto habilita a API no projeto gerenciado. Verificar no ambiente real; o manifesto salvo não comprova autorização ou funcionamento ponta a ponta.
 
 ## Contrato do pedido assinado (somente servidor)
@@ -43,6 +47,14 @@ Direção aprovada: padrão 14 dias, configurável 7/14, somente envios próprio
 Nesta etapa `retentionPreview` **somente calcula candidatos**. Não há gatilho, limpeza em lote ou exclusão automática ativa. `trash` é uma ação individual reversível e verifica pasta/marcadores. Não existe ação de exclusão permanente ou alteração de compartilhamento. O Google pode eliminar automaticamente itens após o prazo da lixeira; lixeira não é backup permanente e continua consumindo espaço enquanto contém os arquivos.
 
 Antes da ativação: implementar API/sessões, interface de retenção/preservação, tratamento privado de leitura/download (URLs Drive não tornam um arquivo privado acessível a terceiros), validação real de CORS/Range da sessão e um ensaio autorizado com arquivo descartável. Nenhum desses pontos foi validado apenas pelos testes locais.
+
+## Ponte do servidor
+
+`server/driveBridge.mjs` assina o texto exato do envelope com `node:crypto`, aplica prazo/cancelamento e limita metadados de entrada/saída. Segue apenas o redirecionamento ContentService esperado para `script.googleusercontent.com/macros/echo`, como GET sem retransmitir o corpo assinado. Não repete mutações automaticamente quando perde a resposta. Erros não incluem URL, segredo ou resposta interna. A chamada falha antes de transmitir se a integração estiver desativada ou se a configuração não for válida.
+
+Somente um handler autenticado deverá usar essa ponte: ela **não implementa login ou autorização do visitante** e ainda não é uma rota HTTP. As variáveis `UNIVER_DRIVE_SCRIPT_URL` e `UNIVER_DRIVE_SERVER_SECRET` são privadas do servidor. `UNIVER_DRIVE_ENABLED` só deve passar para `true` depois da revisão da sessão e dos handlers; nunca criar prefixos VITE_ para essas configurações.
+
+A entrega de vídeos sem login Google continua em definição com o responsável, assim como a presença de arquivos privados. Não compartilhar arquivos publicamente, devolver token OAuth ao cliente ou trafegar vídeos inteiros pela Function por suposição. A existência de `downloadUri` em `files.download` não comprova, por si só, que um download privado dispensa autorização; validar o fluxo escolhido antes da migração. Referências: [downloads de longa duração](https://developers.google.com/workspace/drive/api/guides/long-running-operations) e [limites de Functions](https://vercel.com/docs/functions/limitations).
 
 ## Referências
 
