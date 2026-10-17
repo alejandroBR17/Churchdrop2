@@ -1,0 +1,30 @@
+{
+  "name": "Univer Mídia",
+  "short_name": "Univer Mídia",
+  "description": "Transferência de arquivos para a técnica.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#1e3a8a",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "https://imgur.com/XaqB3Ri.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "https://imgur.com/XaqB3Ri.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "https://imgur.com/XaqB3Ri.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

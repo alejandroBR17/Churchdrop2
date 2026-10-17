@@ -1,0 +1,7 @@
+{
+  "name": "Univer Mídia",
+  "description": "Plataforma oficial de transferência de mídia. Envie arquivos do celular para a técnica com segurança e agilidade.",
+  "version": "3.0",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
