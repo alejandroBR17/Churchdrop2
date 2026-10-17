@@ -94,7 +94,7 @@ test('invalid, regressing or out-of-bounds offsets cannot skip data or loop fore
 });
 
 test('expiration, denial, exhausted recovery and premature success are explicit failures', async () => {
-  for (const [status, message] of [[404, /expirou/], [403, /recusou/], [503, /interrompido/]]) {
+  for (const [status, message] of [[404, /expirou/], [403, /recusou/], [503, /Drive não confirmou/]]) {
     let calls = 0;
     await assert.rejects(uploadResumable(url, file, {...options, maxRetries: 1,
       fetcher: async () => { calls++; return new Response(null, {status}); }}), message);

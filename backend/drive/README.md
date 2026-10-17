@@ -1,9 +1,9 @@
 # Integração Drive do Univer Mídia — preparação
 
 Esta integração está ativa **somente no Preview protegido**, sem migrar ou alterar o acervo legado.
-Os testes de upload usam adaptadores isolados. Leitura e sessão já foram conferidas no serviço real, sem criar arquivos.
+Os testes automatizados usam adaptadores isolados. Um diagnóstico real, expressamente autorizado, também confirmou envio e leitura da resposta no navegador; somente o arquivo temporário foi enviado à lixeira, sem publicação por link.
 
-Estado verificado em 17/10/2026: o responsável autorizou o consentimento Google e a implantação do web app assinado. `initializeStorage` concluiu com sucesso; não reexecutar para continuar. Publicação v2 concluída no endereço existente, com escopos e acesso preservados. Consulta assinada real retornou pasta vazia e GET anônimo foi recusado. Entrada por código, biblioteca vazia e saída foram conferidas na interface real. Nenhum arquivo foi enviado, renomeado, compartilhado ou removido nessa conferência. URL/chave/hash são Secrets somente Preview de `univer-midia`; UNIVER_DRIVE_ENABLED=true apenas nesse ambiente. A ativação não comprova upload/download reais nem migra o acervo antigo.
+Estado verificado em 17/10/2026: o responsável autorizou o consentimento Google e a implantação do web app assinado. `initializeStorage` concluiu com sucesso; não reexecutar para continuar. Publicação v3 concluída no endereço existente, com escopos e acesso preservados. Consulta assinada real retornou pasta vazia e GET anônimo foi recusado. Entrada por código, biblioteca vazia e saída foram conferidas na interface real. A conferência inicial não alterou arquivos. Na investigação posterior, foram usados apenas os arquivos temporários autorizados; os envios legítimos pendentes foram preservados. URL/chave/hash são Secrets somente Preview de `univer-midia`; UNIVER_DRIVE_ENABLED=true apenas nesse ambiente. A ativação e o diagnóstico não comprovam publicação/download completos de material legítimo nem migra o acervo antigo.
 
 ## Arquitetura
 
@@ -34,11 +34,11 @@ Envelope JSON com `issuedAt` (Unix em milissegundos), `nonce` (32–64 caractere
 Assinar os bytes UTF-8 exatos de `issuedAt + "\n" + nonce + "\n" + payload`.
 Não reserializar `payload` após assinar. Não registrar o envelope, token OAuth ou URL de upload.
 
-As ações da fonte e da versão 2 publicada são `list`, `beginUpload`, `publishUpload`, `claimLoginAttempt`, `getText`, `rename`, `trash`, `preserve` e `retentionPreview`.
+As ações da fonte e da versão 3 publicada são `list`, `beginUpload`, `publishUpload`, `claimLoginAttempt`, `getText`, `rename`, `trash`, `preserve` e `retentionPreview`.
 Todas exigem assinatura. `list` e `retentionPreview` são paginados (100 registros); a futura API deve processar `nextPageToken`, sem fingir que a primeira página é a biblioteca inteira.
 Os erros não expõem respostas internas do Google. Um erro na resposta JSON precisa ser tratado mesmo quando o HTTP do Apps Script é 200.
 
-`beginUpload` aceita nome, MIME, tamanho e nome opcional do evento. O limite técnico inicial por arquivo é 2 GiB, alterável em `MAX_FILE_BYTES`; isso não é uma garantia de cota disponível, duração de vídeo nem envio em segundo plano. O tamanho declarado é enviado como X-Upload-Content-Length. O transporte tem blocos de 4 MiB, prazo de 90 segundos por pedido, recuperação limitada, cancelamento e progresso dos bytes confirmados. Fechar o navegador ainda interrompe o JavaScript; recuperação entre aberturas precisa de seleção/validação do mesmo arquivo e tratamento privado da sessão, a implementar.
+`beginUpload` aceita nome, MIME, tamanho, nome opcional do evento e a origem HTTPS calculada pela API autenticada. A API ignora qualquer origem no JSON do cliente. O Apps Script passa essa origem no cabeçalho `Origin` da abertura da sessão: sem isso, o Drive pode gravar os bytes e omitir CORS na resposta ao navegador, aparentando falha de rede. Sessões antigas não recebem a correção retroativamente. O limite técnico inicial por arquivo é 2 GiB, alterável em `MAX_FILE_BYTES`; isso não é uma garantia de cota disponível, duração de vídeo nem envio em segundo plano. O tamanho declarado é enviado como X-Upload-Content-Length. O transporte tem blocos de 4 MiB, prazo de 90 segundos por pedido, recuperação limitada, cancelamento e progresso dos bytes confirmados. Fechar o navegador ainda interrompe o JavaScript; recuperação entre aberturas precisa de seleção/validação do mesmo arquivo e tratamento privado da sessão, a implementar.
 
 ## Retenção segura
 
@@ -46,7 +46,7 @@ Direção aprovada: padrão 14 dias, configurável 7/14, somente envios próprio
 
 Nesta etapa `retentionPreview` **somente calcula candidatos**. Não há gatilho, limpeza em lote ou exclusão automática ativa. `trash` é uma ação individual reversível e verifica pasta/marcadores. Não existe ação de exclusão permanente. O Google pode eliminar automaticamente itens após o prazo da lixeira; lixeira não é backup permanente e continua consumindo espaço enquanto contém os arquivos.
 
-Antes de liberar uso amplo: validar CORS/Range da sessão, publicação e download num envio real autorizado. Código privado e versão Google já configurados em Preview. Entrada/saída e leitura foram verificadas no serviço real; confirmação de compartilhamento e recuperação de publicação foram ensaiadas isoladamente. Retenção/preservação ainda precisam de interface; não ativar limpeza automática por ter concluído a migração de upload. Os testes locais não validam essas operações reais.
+Antes de liberar uso amplo: validar publicação e download de material real, além de retomada por blocos grandes. O diagnóstico privado confirmou CORS e conclusão de um envio pequeno no navegador após a correção de origem. Código privado e versão Google já configurados em Preview. Entrada/saída e leitura foram verificadas no serviço real; confirmação de compartilhamento e recuperação de publicação foram ensaiadas isoladamente. Retenção/preservação ainda precisam de interface; não ativar limpeza automática por ter concluído a migração de upload. Os testes locais não validam essas operações reais.
 
 ## Ponte do servidor
 
@@ -68,7 +68,7 @@ Código aleatório de dez números, gerado privadamente e disponibilizado ao res
 
 O Apps Script reserva até dez tentativas por janela de dez minutos em Script Properties sob lock, compartilhadas entre instâncias da API, antes de verificar o código. O limite é global para este único operador; pode temporariamente bloquear também tentativas legítimas. Estado corrompido falha fechado. Escritas exigem origem idêntica, header do app e JSON com tamanho limitado. Respostas da API são private/no-store. O código/segredo não será incluído no QR de compartilhamento.
 
-`UNIVER_DRIVE_ENABLED=true` está configurado somente no Preview. Nenhuma operação remota de compartilhamento, envio ou exclusão foi executada pelos testes desta etapa. O código público não contém o código de operador, hash real, chave HMAC ou endpoint privado do script.
+`UNIVER_DRIVE_ENABLED=true` está configurado somente no Preview. Não houve publicação por link nos diagnósticos isolados; os arquivos temporários autorizados foram enviados à lixeira após a conferência. Arquivos legítimos permanecem intactos. O código público não contém o código de operador, hash real, chave HMAC ou endpoint privado do script.
 
 ## Referências
 

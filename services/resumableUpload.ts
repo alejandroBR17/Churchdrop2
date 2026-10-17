@@ -108,7 +108,7 @@ export async function uploadResumable(
 
     if (interrupted || response!.status === 429 || response!.status >= 500) {
       if (++failures > maxRetries) {
-        throw new Error('Envio interrompido. Sua conexão não respondeu; tente retomar o arquivo.');
+        throw new Error('O Drive não confirmou a transferência. Tente novamente.');
       }
       await pause(retryDelayMs * 2 ** (failures - 1), signal);
       probe = true;

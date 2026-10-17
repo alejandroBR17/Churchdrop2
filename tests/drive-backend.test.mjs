@@ -88,7 +88,7 @@ test('trash is reversible and rename/preservation do not reset upload age or cha
 test('resumable session initialization sends only metadata and constrains folder, type and size', () => {
   const session = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&upload_id=isolated';
   const h = harness(() => ({headers: {Location: session}}));
-  const result = h.post({action: 'beginUpload', name: 'Vídeo.mp4', size: 1024, mimeType: 'video/mp4', eventName: 'Sábado', shareByLink: true});
+  const result = h.post({action: 'beginUpload', name: 'Vídeo.mp4', size: 1024, mimeType: 'video/mp4', eventName: 'Sábado', shareByLink: true, origin: 'https://app.example'});
   assert.equal(result.status, 'success');
   assert.equal(result.data.sessionUrl, session);
   const metadata = JSON.parse(h.calls[0].options.payload);
@@ -98,10 +98,11 @@ test('resumable session initialization sends only metadata and constrains folder
   assert.equal(metadata.appProperties.expectedSize, '1024');
   assert.ok(Number.isFinite(Date.parse(metadata.appProperties.uploadedAt)));
   assert.equal(h.calls[0].options.headers['X-Upload-Content-Length'], '1024');
+  assert.equal(h.calls[0].options.headers.Origin, 'https://app.example');
   assert.equal(metadata.bytes, undefined);
   const invalid = harness();
-  for (const value of [{size: 0}, {size: 2147483649}, {mimeType: 'video/mp4\r\nInjected: yes'}, {name: '\n'}, {shareByLink: false}]) {
-    assert.equal(invalid.post({action: 'beginUpload', name: 'Vídeo.mp4', size: 1024, mimeType: 'video/mp4', shareByLink: true, ...value}).status, 'error');
+  for (const value of [{size: 0}, {size: 2147483649}, {mimeType: 'video/mp4\r\nInjected: yes'}, {name: '\n'}, {shareByLink: false}, {origin: undefined}, {origin: 'https://app.example\r\nInjected: yes'}]) {
+    assert.equal(invalid.post({action: 'beginUpload', name: 'Vídeo.mp4', size: 1024, mimeType: 'video/mp4', shareByLink: true, origin: 'https://app.example', ...value}).status, 'error');
   }
   assert.equal(invalid.calls.length, 0);
 });

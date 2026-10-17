@@ -91,3 +91,12 @@ test('media listing hides unfinished uploads and owner metadata; mutations requi
   }
   assert.equal(operations.length, 1);
 });
+
+test('upload origin comes from the authenticated API URL, never from caller JSON', async () => {
+  let operation;
+  const handler = createMediaHandler({environment, authorize: async () => {}, drive: async input => {operation = input; return {sessionUrl: 'isolated-session'};}});
+  const response = await handler(request('/api/media', 'POST', {action: 'beginUpload', name: 'Aviso.png', size: 12,
+    mimeType: 'image/png', eventName: '', shareByLink: true, origin: 'https://attacker.example'}));
+  assert.equal(response.status, 200);
+  assert.equal(operation.origin, 'https://app.example');
+});

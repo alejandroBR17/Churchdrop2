@@ -51,7 +51,7 @@ export function createMediaHandler({environment = process.env, drive = callDrive
             throw new HttpError(400, 'Confirme o compartilhamento por link e confira o arquivo (até 2 GB).');
           }
           operation = {action: input.action, name: name(input.name), size: input.size, mimeType: input.mimeType,
-            eventName: input.eventName, shareByLink: true}; break;
+            eventName: input.eventName, shareByLink: true, origin: new URL(request.url).origin}; break;
         case 'publishUpload':
           if (input.confirmShare !== true) throw new HttpError(400, 'Confirme o compartilhamento por link.');
           operation = {action: input.action, id: id(input.id), confirmShare: true}; break;

@@ -148,11 +148,14 @@ function beginUpload_(request) {
   var eventName = request.eventName === undefined ? '' : request.eventName;
   if (typeof eventName !== 'string' || eventName.length > 100) throw new Error('Invalid event');
   if (request.shareByLink !== true) throw new Error('Confirm link sharing before uploading');
+  // Google binds response CORS headers to the origin that starts this session.
+  // The authenticated app server supplies its own origin, never a browser payload.
+  if (typeof request.origin !== 'string' || !/^https:\/\/[a-zA-Z0-9.-]+(?::[0-9]{1,5})?$/.test(request.origin)) throw new Error('Invalid upload origin');
   var response = driveRequest_('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id', 'post', {
     name: name, mimeType: mimeType, parents: [root],
     appProperties: {app: APP_MARKER, kind: 'media', uploadedAt: new Date().toISOString(), eventName: eventName,
       preserve: '0', sharing: 'pending', expectedSize: String(request.size)},
-  }, {'X-Upload-Content-Type': mimeType, 'X-Upload-Content-Length': String(request.size)});
+  }, {'Origin': request.origin, 'X-Upload-Content-Type': mimeType, 'X-Upload-Content-Length': String(request.size)});
   var headers = response.getAllHeaders();
   var header = Object.keys(headers).find(function (key) { return key.toLowerCase() === 'location'; });
   var session = header && headers[header];
