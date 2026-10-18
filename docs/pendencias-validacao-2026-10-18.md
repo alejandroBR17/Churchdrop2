@@ -1,5 +1,7 @@
 # Univer Mídia — entrega para avaliação, 18/10/2026
 
+Atualização: produção autorizada e publicada em https://churchdrop2.vercel.app/ , commit 7fdbc92d3e702505c28efc6529222fccde691ec3, com 94 testes e login/biblioteca autenticada conferidos. Os limites abaixo permanecem; referências à produção ainda pendente descrevem a etapa anterior e foram substituídas por esta autorização expressa.
+
 Prévia protegida vigente: https://univer-midia-p8skwd5jn-alesobralcortes-9387s-projects.vercel.app/
 
 Código implantado: 2069e891eebc1143b11bb297ebfbeb14c5cae4f9. Projeto Vercel univer-midia, ambiente Preview, PR #1 draft. Produção, Churchdrop antigo e backend legado não foram substituídos. O código de operador permanece no guia privado; não deve entrar nesta documentação.

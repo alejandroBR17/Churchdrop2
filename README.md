@@ -2,6 +2,8 @@
 
 Aplicação React/Vite para organizar e transferir mídias usadas na igreja. Repositório importado do Google AI Studio para preparação e revisão na Vercel.
 
+Produção autorizada pelo responsável em 18/10/2026: https://churchdrop2.vercel.app/ . A biblioteca exige o código privado de operador; o projeto antigo churchdrop.vercel.app permanece separado. A configuração assinada do novo Drive está ativa em produção e Preview, sem migrar o acervo legado.
+
 ## Executar
 
 Use Node.js 24 e npm:
@@ -23,7 +25,7 @@ A interface é hospedada na Vercel. `services/churchService.ts` usa somente a AP
 
 Nenhuma credencial de IA é necessária para iniciar a interface atual. Não coloque chaves privadas em código de navegador, no Git ou em variáveis com prefixo `VITE_`.
 
-A nova integração com Drive está descrita em [backend/drive](backend/drive/README.md). A versão 3 do script e o código privado de operador foram configurados somente no Preview. Entrada, listagem e saída foram conferidas pela interface implantada. Um envio binário real isolado, autorizado pelo responsável, confirmou a resposta do Drive no navegador; o arquivo temporário foi enviado à lixeira sem compartilhamento. O responsável confirmou que o envio de seu material funcionou após a correção. Download em outro aparelho e vídeos grandes ainda precisam de ensaio completo. Se `UNIVER_DRIVE_ENABLED=false`, a interface mostra preparação e não usa o serviço antigo como fallback. O acervo legado permanece intocado.
+A nova integração com Drive está descrita em [backend/drive](backend/drive/README.md). A versão 3 do script e o código privado de operador estão configurados em Preview e, após autorização em 18/10/2026, em produção. Entrada, listagem e saída foram conferidas pela interface implantada. Um envio binário real isolado, autorizado pelo responsável, confirmou a resposta do Drive no navegador; o arquivo temporário foi enviado à lixeira sem compartilhamento. O responsável confirmou que o envio de seu material funcionou após a correção. Download em outro aparelho e vídeos grandes ainda precisam de ensaio completo. Se `UNIVER_DRIVE_ENABLED=false`, a interface mostra preparação e não usa o serviço antigo como fallback. O acervo legado permanece intocado.
 
 O acervo novo é composto somente por materiais que podem ser compartilhados por link, conforme decisão do responsável. A pasta permanece privada. A tela de envio exige confirmação de que qualquer pessoa que receber o link poderá abrir e repassá-lo. Enviar, renomear e remover exigem sessão de operador; o uso cotidiano dispensa login Google. A ativação é exclusiva do Preview protegido, sem publicação em produção.
 
@@ -75,4 +77,4 @@ A leitura da biblioteca faz no máximo uma nova tentativa após falha de transpo
 
 Esta importação prepara um ambiente para revisão; não representa auditoria completa. Testes automatizados devem interceptar APIs e sessões de upload ou usar origem isolada, preservando arquivos reais. Testes com respostas simuladas não confirmam CORS/Range, permissões ou download real do Google.
 
-Os resultados, limites e próximos testes estão consolidados em [pendências para avaliação](docs/pendencias-validacao-2026-10-18.md). Permanecem sete alertas conhecidos de ferramentas na cadeia Tailwind 3, cuja migração exige revisão visual e de compatibilidade. Vídeos grandes, downloads no aparelho e transferência incompleta após recarga não foram validados ponta a ponta. Não há licença definida pelo titular neste repositório nesta etapa. Produção ainda não foi autorizada para esta revisão.
+Os resultados, limites e próximos testes estão consolidados em [pendências para avaliação](docs/pendencias-validacao-2026-10-18.md). Permanecem sete alertas conhecidos de ferramentas na cadeia Tailwind 3, cuja migração exige revisão visual e de compatibilidade. Vídeos grandes, downloads no aparelho e transferência incompleta após recarga não foram validados ponta a ponta. Não há licença definida pelo titular neste repositório nesta etapa. Produção foi autorizada e publicada em 18/10; esses limites continuam explícitos.
