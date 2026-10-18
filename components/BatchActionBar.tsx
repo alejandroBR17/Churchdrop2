@@ -29,7 +29,7 @@ export const BatchActionBar: React.FC<BatchActionBarProps> = ({
   onBulkCopyLinks,
   downloadBusy = false, downloadStatus, downloadNotice, downloadUnavailable = false, onCancelDownload
 }) => {
-  if (selectedCount === 0) return null;
+  if (selectedCount === 0 && !downloadBusy) return null;
 
   const isAllSelected = selectedCount === totalCount && totalCount > 0;
 
@@ -43,11 +43,12 @@ export const BatchActionBar: React.FC<BatchActionBarProps> = ({
         <div className="flex items-center gap-3">
           <button 
             disabled={downloadBusy}
+            aria-label={isAllSelected ? 'Limpar seleção' : 'Selecionar resultados atuais'}
             onClick={isAllSelected ? onClearSelection : onSelectAll}
             className="flex items-center gap-2 text-xs font-bold text-neutral-300 hover:text-white px-2 py-1 rounded-lg hover:bg-neutral-800 transition-colors"
           >
             {isAllSelected ? <CheckSquare size={16} className="text-univer-blue" /> : <Square size={16} />}
-            <span>{isAllSelected ? 'Todos' : `${selectedCount} sel.`}</span>
+            <span>{selectedCount} sel.</span>
           </button>
         </div>
 

@@ -27,6 +27,7 @@ import { MobileBottomNav } from './components/MobileBottomNav';
 import { MobileSidebarDrawer } from './components/MobileSidebarDrawer';
 
 import { MediaItem, MediaType, ToastState, ViewMode } from './types';
+import {libraryDays, uploadDay} from './services/libraryDays';
 import { 
   fetchFilesFromScript, deleteFileFromScript, renameFileInScript, 
   getCachedFiles, groupItemsByEvent, fetchTextContent, setFilePreservation
@@ -46,6 +47,10 @@ export default function App() {
   
   // Data & Selection State
   const [items, setItems] = useState<MediaItem[]>([]);
+  const [selectedDay, setSelectedDay] = useState('recent');
+  const days = useMemo(()=>libraryDays(items),[items]);
+  const resolvedDay = selectedDay === 'recent' ? days[0]?.key : selectedDay === 'all' ? undefined : selectedDay;
+  const dayItems = useMemo(()=>resolvedDay ? items.filter(item=>uploadDay(item.date)===resolvedDay) : items,[items,resolvedDay]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -129,7 +134,7 @@ export default function App() {
   // Reset visible limit on filter/search change (progressive chunking)
   useEffect(() => {
     setVisibleItemLimit(12);
-  }, [activeFilter, searchTerm]);
+  }, [activeFilter, searchTerm, resolvedDay]);
 
   // Fetch Files with Step 1/2 Loading Architecture
   const loadFiles = async (showLoadingSpinner = true) => {
@@ -180,14 +185,14 @@ export default function App() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'a') {
         if (zipRequest.current) {e.preventDefault(); return;}
-        if (!['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
+        if (!['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement).tagName) && !(e.target as HTMLElement).isContentEditable) {
           e.preventDefault();
           setSelectedIds(filteredItems.map(i => i.id));
           showToast(`${filteredItems.length} itens selecionados`, 'info');
         }
       }
       if (e.key === '/') {
-        if (!['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
+        if (!['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement).tagName) && !(e.target as HTMLElement).isContentEditable) {
           e.preventDefault();
           const searchInput = document.getElementById('library-search') as HTMLInputElement;
           if (searchInput) searchInput.focus();
@@ -197,30 +202,34 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [items, searchTerm, activeFilter]);
+  }, [items, searchTerm, activeFilter, resolvedDay]);
 
   // Filter & Search Logic
   const filteredItems = useMemo(() => {
-    return items.filter(item => {
+    return dayItems.filter(item => {
       const matchesFilter = activeFilter === 'all' || item.type === activeFilter;
       const matchesSearch = !searchTerm.trim() || 
         item.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
         (item.eventName && item.eventName.toLowerCase().includes(searchTerm.toLowerCase()));
       return matchesFilter && matchesSearch;
     });
-  }, [items, activeFilter, searchTerm]);
+  }, [dayItems, activeFilter, searchTerm]);
+  useEffect(()=>{
+    const visible = new Set(filteredItems.map(item=>item.id));
+    setSelectedIds(previous=>previous.filter(id=>visible.has(id)));
+  },[filteredItems]);
 
   // Counts by type
   const counts = useMemo(() => {
     return {
-      all: items.length,
-      video: items.filter(i => i.type === 'video').length,
-      image: items.filter(i => i.type === 'image').length,
-      pdf: items.filter(i => i.type === 'pdf').length,
-      audio: items.filter(i => i.type === 'audio').length,
-      text: items.filter(i => i.type === 'text').length,
+      all: dayItems.length,
+      video: dayItems.filter(i => i.type === 'video').length,
+      image: dayItems.filter(i => i.type === 'image').length,
+      pdf: dayItems.filter(i => i.type === 'pdf').length,
+      audio: dayItems.filter(i => i.type === 'audio').length,
+      text: dayItems.filter(i => i.type === 'text').length,
     };
-  }, [items]);
+  }, [dayItems]);
 
   // Grouping by Service/Event Name
   const groupedItems = useMemo(() => {
@@ -473,6 +482,17 @@ export default function App() {
           <section className="library-intro mb-7 flex flex-wrap items-end justify-between gap-5">
             <div><p className="eyebrow mb-2">Organize. Compartilhe. Projete.</p><h1 className="text-3xl sm:text-4xl font-bold tracking-tight">Sua biblioteca<span className="text-blue-500">.</span></h1><p className="mt-3 text-sm text-neutral-500 dark:text-neutral-400 max-w-md leading-relaxed">Os materiais da igreja, prontos para encontrar e levar à projeção.</p></div>
             <div className="library-summary flex gap-6"><div><strong>{items.length}</strong><span>arquivos</span></div><div><strong>{Object.keys(groupItemsByEvent(items)).length}</strong><span>eventos e pastas</span></div></div>
+          </section>
+          <section aria-label="Arquivos por dia" className="mb-5 flex flex-wrap items-end gap-3 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4">
+            <label className="min-w-0 flex-1 text-xs font-semibold">Dia de envio
+              <select aria-label="Dia de envio" disabled={Boolean(zipProgress)} value={selectedDay} onChange={event=>{setSelectedDay(event.target.value);setSelectedIds([]);}} className="mt-2 block w-full min-w-0 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 px-3 py-2.5 text-sm">
+                <option value="recent">{days[0] ? `Mais recente · ${days[0].label}` : 'Dia mais recente'}</option>
+                {days.filter(day=>day.key!==days[0]?.key || day.key===selectedDay).map(day=><option key={day.key} value={day.key}>{day.label} · {day.count} arquivo(s)</option>)}
+                <option value="all">Todos os dias · biblioteca inteira</option>
+              </select>
+            </label>
+            <button type="button" disabled={!filteredItems.length || Boolean(zipProgress)} onClick={handleSelectAll} className="rounded-xl bg-blue-600 px-4 py-3 text-xs font-semibold text-white disabled:opacity-40">{resolvedDay ? 'Selecionar arquivos deste dia' : 'Selecionar resultados'}</button>
+            <p className="w-full text-xs text-neutral-500">{filteredItems.length} arquivo(s) nos filtros atuais. Datas pelo horário de Brasília.</p>
           </section>
           {/* Category Filter Pills (Mobile Scrollable) */}
           <div className="category-tabs flex items-center gap-2 overflow-x-auto pb-3 mb-6 md:hidden custom-scrollbar">

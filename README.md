@@ -57,6 +57,12 @@ services/lyricsFormatter.ts analisa cada linha localmente, sem IA remota, creden
 
 Uma frase entre parênteses não é tratada como crédito por suposição. Conteúdos ambíguos ficam mantidos em Revisar limpeza; o operador pode remover uma linha, manter o original ou reaplicar a limpeza. O texto original permanece disponível. Regras locais não compreendem semanticamente qualquer letra e não garantem formato perfeito de qualquer fonte: revise antes de copiar. Textos acima de 100 mil caracteres são recusados explicitamente, sem truncar a origem. O resultado são blocos de texto separados por linhas vazias para copiar; não é importação automática no Holyrics.
 
+Na interface, o fluxo é nome + letra limpa, sem configurar slides. Opções e alterações ficam recolhidas; Copiar nome e Copiar letra são ações separadas. `services/songbook.ts` separa músicas por títulos sinalizados com círculos coloridos, cabeçalhos Markdown ou Título/Música:, preservando estrofes. Reconhece uma possível linha de autor imediatamente abaixo do título, inclusive sem parênteses; a remoção pode ser desfeita por linha. A regra não remove nomes no corpo da letra e mantém frases devocionais conhecidas. Sem cabeçalhos claros, cole uma música por vez. Não é reconhecimento semântico universal nem expande automaticamente instruções como Refrão 2x: remove a instrução e mantém as repetições já escritas.
+
+## Seleção por dia
+
+A biblioteca inicia no dia de envio mais recente. Seletor permite outra data ou Todos os dias → biblioteca inteira; datas usam America/Sao_Paulo sobre a data de publicação registrada, não extraem datas de nomes de eventos. Selecionar arquivos deste dia respeita busca/tipo ativos e inclui arquivos de eventos diferentes. Trocar de dia limpa a seleção, e filtros removem itens ocultos da seleção. Ctrl+A respeita o escopo atual; seleção em campos de texto não é capturada. Selecionar todos os dias continua disponível por escolha explícita. A seleção apenas prepara as ações; não solicita downloads nem exclui arquivos automaticamente.
+
 ## Estado da revisão
 
 Em Servidor & Diagnóstico → Revisar arquivos antigos, consulte materiais publicados há 7 ou 14 dias. A consulta percorre todas as páginas, inclusive páginas sem candidatos; erros não aparecem como uma lista vazia. Arquivos marcados como preservados no servidor ficam fora dos candidatos. Esta tela apenas lista: não exclui, não altera compartilhamento nem ativa limpeza automática. Fechar o diagnóstico cancela as consultas pendentes.

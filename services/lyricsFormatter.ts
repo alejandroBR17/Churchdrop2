@@ -52,7 +52,7 @@ export function formatLyrics(input: string, options: FormatterOptions = {}): For
     if (text !== before.trim()) reasons.push('Caracteres invisíveis ou normalização');
     text = text.replace(/[ \t]+/g, ' ');
     if (config.removeSymbols) {
-      const next = cleanSymbols(text).trim();
+      const next = /^[\s━─═_~*=-]{3,}$/u.test(text) ? '' : cleanSymbols(text).trim();
       if (next !== text) reasons.push('Emojis, símbolos decorativos ou marcação visual');
       text = next;
     }
