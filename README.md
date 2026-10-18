@@ -57,6 +57,8 @@ Uma frase entre parênteses não é tratada como crédito por suposição. Conte
 
 ## Estado da revisão
 
+A leitura da biblioteca faz no máximo uma nova tentativa após falha de transporte ou HTTP 502/503/504, aguardando meio segundo e mantendo o orçamento total de 20 segundos por página. Sair da sessão ou cancelar interrompe a espera. Autenticação, limitação de acesso, respostas inválidas e operações que alteram dados não são repetidas automaticamente. Uma página parcial nunca substitui a última biblioteca completa validada. Essa proteção reduz falhas transitórias; não determina a causa de uma indisponibilidade do Google.
+
 Esta importação prepara um ambiente para revisão; não representa auditoria completa. Testes automatizados devem interceptar APIs e sessões de upload ou usar origem isolada, preservando arquivos reais. Testes com respostas simuladas não confirmam CORS/Range, permissões ou download real do Google.
 
 Ainda serão revisados segurança das operações remotas, dependências, tratamento de falhas, dados offline, experiência em diferentes telas e documentação de operação. Não há licença definida pelo titular neste repositório nesta etapa.

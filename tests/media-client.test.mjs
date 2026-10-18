@@ -6,6 +6,46 @@ import {fetchFilesFromScript, getCachedFiles, clearOperatorData, renameFileInScr
 
 const file = {id: 'isolated-file', name: 'Aviso.txt', mimeType: 'text/plain', date: '2026-10-17T12:00:00Z'};
 const json = (data, status = 200) => Response.json(data, {status});
+
+test('library retries a transient gateway or transport failure once, keeping the same cursor', async () => {
+  for (const failure of [() => new Response('Gateway unavailable', {status: 502}), () => {throw new TypeError('Failed to fetch');}]) {
+    let calls = 0;
+    const result = await appApi('/api/media', undefined, {cursor: 'page/2', fetcher: async (path) => {
+      assert.equal(path, '/api/media?cursor=page%2F2');
+      if (++calls === 1) return failure();
+      return json({files: [file]});
+    }});
+    assert.deepEqual(result.files, [file]); assert.equal(calls, 2);
+  }
+});
+
+test('unavailable library stops after one retry; auth, throttling and malformed success never retry', async () => {
+  for (const status of [503, 401, 403, 429]) {
+    let calls = 0;
+    await assert.rejects(appApi('/api/media', undefined, {fetcher: async () => {calls++; return json({error:'Unavailable'}, status);}}), /Unavailable/);
+    assert.equal(calls, status === 503 ? 2 : 1);
+  }
+  let calls = 0;
+  await assert.rejects(appApi('/api/media', undefined, {fetcher: async () => {calls++; return new Response('Invalid JSON');}}), SyntaxError);
+  assert.equal(calls, 1);
+});
+
+test('mutations and session requests never repeat after a lost acknowledgement', async () => {
+  for (const [path, body, method] of [['/api/media', {action:'beginUpload'}, 'POST'], ['/api/session', undefined, 'GET'], ['/api/session', undefined, 'DELETE']]) {
+    let calls = 0;
+    await assert.rejects(appApi(path, body, {method, fetcher: async () => {calls++; throw new TypeError('Connection lost');}}), /Connection lost/);
+    assert.equal(calls, 1);
+  }
+});
+
+test('cancellation during retry backoff prevents a second request', async () => {
+  const controller = new AbortController();
+  let calls = 0;
+  await assert.rejects(appApi('/api/media', undefined, {signal:controller.signal, fetcher:async () => {
+    calls++; setTimeout(() => controller.abort(), 20); return json({error:'Unavailable'}, 504);
+  }}), error => error.name === 'AbortError');
+  assert.equal(calls, 1);
+});
 async function withFetch(fetcher, run) {
   const original = globalThis.fetch; globalThis.fetch = fetcher;
   try {clearOperatorData(); await run();} finally {globalThis.fetch = original; clearOperatorData();}
