@@ -39,6 +39,12 @@ export async function renameFileInScript(id: string, name: string) {
   snapshot = snapshot.map(file => file.id === id ? {...file, name} : file);
   return result;
 }
+export async function setFilePreservation(id: string, preserved: boolean, signal?: AbortSignal): Promise<void> {
+  if (typeof preserved !== 'boolean') throw new Error('Opção de preservação inválida.');
+  const result = await appApi<{id: string; preserved: boolean}>('/api/media', {action: 'preserve', id, preserve: preserved}, {signal});
+  if (result.id !== id || result.preserved !== preserved) throw new Error('Não foi possível confirmar a preservação. Atualize a biblioteca.');
+  snapshot = snapshot.map(file => file.id === id ? {...file, preserved} : file);
+}
 export async function deleteFileFromScript(id: string) {
   const result = await appApi('/api/media', {action: 'trash', id});
   snapshot = snapshot.filter(file => file.id !== id);

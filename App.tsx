@@ -29,7 +29,7 @@ import { MobileSidebarDrawer } from './components/MobileSidebarDrawer';
 import { MediaItem, MediaType, ToastState, ViewMode } from './types';
 import { 
   fetchFilesFromScript, deleteFileFromScript, renameFileInScript, 
-  getCachedFiles, groupItemsByEvent, fetchTextContent
+  getCachedFiles, groupItemsByEvent, fetchTextContent, setFilePreservation
 } from './services/churchService';
 
 const GOLD_TEXT_CLASS = "text-amber-600 dark:text-univer-gold";
@@ -58,6 +58,9 @@ export default function App() {
   const zipAvailability = zipEligibility(selectedItems);
   const [listError, setListError] = useState('');
   const listRequest = useRef<AbortController | null>(null);
+  const preservationRequest = useRef<AbortController | null>(null);
+  const [preservingId, setPreservingId] = useState<string | null>(null);
+  useEffect(() => () => preservationRequest.current?.abort(), []);
   const [loadingStage, setLoadingStage] = useState<'idle' | 'stage1_cache' | 'stage2_server'>('idle');
   const [visibleItemLimit, setVisibleItemLimit] = useState<number>(12);
 
@@ -130,6 +133,7 @@ export default function App() {
 
   // Fetch Files with Step 1/2 Loading Architecture
   const loadFiles = async (showLoadingSpinner = true) => {
+    if (preservationRequest.current) {showToast('Aguarde a preservação terminar antes de atualizar.', 'info'); return;}
     listRequest.current?.abort();
     const request = new AbortController();
     listRequest.current = request;
@@ -326,6 +330,24 @@ export default function App() {
   };
 
   // Rename File Handler
+  const handlePreservation = async (item: MediaItem) => {
+    if (preservationRequest.current || isRefreshing) return;
+    const controller = new AbortController(); preservationRequest.current = controller;
+    setPreservingId(item.id);
+    const preserved = !item.preserved;
+    try {
+      await setFilePreservation(item.id, preserved, controller.signal);
+      if (controller.signal.aborted) return;
+      setItems(previous => previous.map(file => file.id === item.id ? {...file, preserved} : file));
+      showToast(preserved ? 'Arquivo fora da revisão por idade. A exclusão manual continua disponível.' : 'Arquivo incluído novamente na revisão por idade.', 'success');
+    } catch {
+      if (!controller.signal.aborted) showToast('Não foi possível salvar. Atualize a biblioteca e tente novamente.', 'error');
+    } finally {
+      if (preservationRequest.current === controller) preservationRequest.current = null;
+      if (!controller.signal.aborted) setPreservingId(null);
+    }
+  };
+
   const handleConfirmRename = async (id: string, newName: string) => {
     await renameFileInScript(id, newName);
     setItems(prev => prev.map(i => i.id === id ? { ...i, name: newName } : i));
@@ -612,6 +634,9 @@ export default function App() {
                                 setIsBulkDeleteConfirm(false);
                               }}
                               onRename={(item) => setItemToRename(item)}
+                              onPreserve={handlePreservation}
+                              isPreserving={preservingId === item.id}
+                              preservationDisabled={Boolean(preservingId) || isRefreshing}
                               onDownload={(url) => handleDownload(url)}
                               onView={handleViewMedia}
                               onShare={(item) => {

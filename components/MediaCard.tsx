@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
   Video, FileText, Music, Image as ImageIcon, Download, Trash2, 
-  Edit3, CheckCircle, Eye, Share2, Play
+  Edit3, CheckCircle, Eye, Share2, Play, Bookmark, Loader2
 } from 'lucide-react';
 import { MediaItem } from '../types';
 
@@ -15,6 +15,9 @@ interface MediaCardProps {
   onDownload: (url: string) => void;
   onView: (item: MediaItem) => void;
   onShare?: (item: MediaItem) => void;
+  onPreserve?: (item: MediaItem) => void;
+  isPreserving?: boolean;
+  preservationDisabled?: boolean;
 }
 
 export const MediaCard: React.FC<MediaCardProps> = ({ 
@@ -26,7 +29,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({
   onRename, 
   onDownload, 
   onView,
-  onShare 
+  onShare, onPreserve, isPreserving, preservationDisabled
 }) => {
   const [imgError, setImgError] = useState(false);
   const [isImgLoading, setIsImgLoading] = useState(true);
@@ -158,6 +161,17 @@ export const MediaCard: React.FC<MediaCardProps> = ({
             <span>{new Date(item.date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
           </div>
         </div>
+
+        {onPreserve && <button type="button"
+          aria-pressed={Boolean(item.preserved)}
+          aria-label={`${item.preserved ? 'Remover preservação de' : 'Preservar'} ${item.name}`}
+          disabled={preservationDisabled}
+          title="Fica fora da revisão por idade. Não é backup e não impede exclusão manual."
+          onClick={event=>{event.stopPropagation(); onPreserve(item);}}
+          className={`mt-3 flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs font-medium disabled:opacity-50 ${item.preserved ? 'border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300' : 'border-neutral-200 dark:border-neutral-700 text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800'}`}>
+          {isPreserving ? <Loader2 size={14} className="shrink-0 animate-spin"/> : <Bookmark size={14} className="shrink-0" fill={item.preserved ? 'currentColor' : 'none'}/>}
+          {isPreserving ? 'Salvando…' : item.preserved ? 'Preservado da revisão por idade' : 'Preservar este arquivo'}
+        </button>}
 
         {/* Action Toolbar */}
         <div className="flex items-center justify-between border-t border-neutral-100 dark:border-neutral-800/80 pt-2.5 mt-2.5">

@@ -5,6 +5,12 @@ import {fetchDriveFiles, readDriveFiles, mapDriveFiles} from '../services/fileLi
 const file = {id:'drive-id',name:'Aviso.png',mimeType:'image/png',date:'2026-10-17T12:00:00Z'};
 const response = data => async () => new Response(JSON.stringify(data), {status:200});
 
+test('preservation is a validated boolean and survives library mapping',()=>{
+  assert.equal(mapDriveFiles([{...file,preserved:true}])[0].preserved,true);
+  assert.equal(mapDriveFiles([file])[0].preserved,false);
+  assert.equal(readDriveFiles([{...file,preserved:'true'}]),null);
+});
+
 test('successful empty list is distinct from transport failure and malformed server output', async () => {
   assert.deepEqual(await fetchDriveFiles('https://example.test', {fetcher:response({status:'success',files:[]})}), []);
   for (const fetcher of [async()=>{throw Error('offline');},async()=>new Response('HTML'),

@@ -79,6 +79,10 @@ export function createMediaHandler({environment = process.env, drive = callDrive
         default: throw new HttpError(400, 'Operação inválida.');
       }
       const result = await drive(operation, {environment, signal: request.signal});
+      if (input.action === 'preserve') {
+        if (result.id !== input.id || result.appProperties?.preserve !== (input.preserve ? '1' : '0')) throw new Error('Preservation not confirmed');
+        return json({status: 'success', id: input.id, preserved: input.preserve}, 200, headers);
+      }
       if (input.action === 'publishUpload') return json({status: 'success', file: fileDto(result)}, 200, headers);
       if (input.action === 'retentionPreview') return json({status: 'success', files: result.files.map(fileDto), nextPageToken: result.nextPageToken || null}, 200, headers);
       return json({status: 'success', ...result}, 200, headers);

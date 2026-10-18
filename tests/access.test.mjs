@@ -121,6 +121,21 @@ test('retention review forwards validated cursors and cannot request a cleanup',
   assert.equal(operations.length,1);
 });
 
+test('preservation returns a minimal acknowledgement only when the server confirmed the requested flag',async()=>{
+  let result;
+  const operations=[];
+  const handler=createMediaHandler({environment,authorize:async()=>{},drive:async input=>{operations.push(input);return result;}});
+  for(const preserve of [true,false]){
+    result={id:'file-123',appProperties:{preserve:preserve?'1':'0',privateMarker:'not-for-client'}};
+    const r=await handler(request('/api/media','POST',{action:'preserve',id:'file-123',preserve}));
+    assert.deepEqual(await r.json(),{status:'success',id:'file-123',preserved:preserve});
+  }
+  result={id:'file-123',appProperties:{preserve:'0'}};
+  assert.equal((await handler(request('/api/media','POST',{action:'preserve',id:'file-123',preserve:true}))).status,502);
+  assert.equal((await handler(request('/api/media','POST',{action:'preserve',id:'file-123',preserve:'true'}))).status,400);
+  assert.equal(operations.length,3);
+});
+
 test('media API prefers the official browser download link only for the same file and preserves resource keys', async () => {
   const base={id:'file-123',name:'Arquivo.txt',mimeType:'text/plain',size:'10',resourceKey:'isolated-resource',appProperties:{sharing:'link',uploadedAt:'2026-10-17T12:00:00Z'}};
   for(const provided of ['https://drive.usercontent.google.com/download?id=file-123&export=download&resourcekey=isolated-resource','https://attacker.example/uc?id=file-123&export=download','https://drive.google.com/uc?id=other-file&export=download']) {

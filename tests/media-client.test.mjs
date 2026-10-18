@@ -2,10 +2,35 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {appApi} from '../services/appApi.ts';
 import {fetchFilesFromScript, getCachedFiles, clearOperatorData, renameFileInScript,
-  deleteFileFromScript, uploadFileToScript, groupItemsByEvent, getPendingUploads, publishPendingUpload, reviewOlderFiles} from '../services/churchService.ts';
+  deleteFileFromScript, uploadFileToScript, groupItemsByEvent, getPendingUploads, publishPendingUpload, reviewOlderFiles, setFilePreservation} from '../services/churchService.ts';
 
 const file = {id: 'isolated-file', name: 'Aviso.txt', mimeType: 'text/plain', date: '2026-10-17T12:00:00Z'};
 const json = (data, status = 200) => Response.json(data, {status});
+
+test('preservation updates only after matching acknowledgement and failures are not retried',async()=>{
+  let mode='failure',writes=0;
+  await withFetch(async(_path,init)=>{
+    if(init.method==='GET')return json({files:[{...file,preserved:false}]});
+    writes++;const input=JSON.parse(init.body);assert.equal(input.action,'preserve');
+    if(mode==='failure')return json({error:'Unavailable'},502);
+    if(mode==='mismatch')return json({id:'wrong-file',preserved:input.preserve});
+    return json({id:file.id,preserved:input.preserve});
+  },async()=>{
+    await fetchFilesFromScript();
+    await assert.rejects(setFilePreservation(file.id,true));assert.equal(writes,1);assert.equal(getCachedFiles()[0].preserved,false);
+    mode='mismatch';await assert.rejects(setFilePreservation(file.id,true));assert.equal(getCachedFiles()[0].preserved,false);
+    mode='success';await setFilePreservation(file.id,true);assert.equal(getCachedFiles()[0].preserved,true);
+    await setFilePreservation(file.id,false);assert.equal(getCachedFiles()[0].preserved,false);
+  });
+});
+
+test('cancelled preservation cannot restore metadata after leaving the session',async()=>{
+  const controller=new AbortController();
+  await withFetch(async()=>{clearOperatorData();controller.abort();return json({id:file.id,preserved:true});},async()=>{
+    await assert.rejects(setFilePreservation(file.id,true,controller.signal),error=>error.name==='AbortError');
+    assert.deepEqual(getCachedFiles(),[]);
+  });
+});
 
 test('age review traverses empty filtered pages and never replaces the library or changes a file', async () => {
   const operations=[];

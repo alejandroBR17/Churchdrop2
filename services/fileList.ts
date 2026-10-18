@@ -9,6 +9,7 @@ export interface DriveFile {
   thumbnailLink?: string;
   folderName?: string;
   sizeBytes?: number;
+  preserved?: boolean;
 }
 
 /** Reject a malformed snapshot as a whole instead of hiding partially lost records. */
@@ -21,6 +22,7 @@ export function readDriveFiles(value: unknown): DriveFile[] | null {
         typeof file.name !== 'string' || typeof file.mimeType !== 'string' ||
         typeof file.date !== 'string' || !Number.isFinite(Date.parse(file.date)) ||
         ['downloadUrl', 'thumbnailLink', 'folderName'].some(key => file[key] !== undefined && typeof file[key] !== 'string') ||
+        (file.preserved !== undefined && typeof file.preserved !== 'boolean') ||
         (file.sizeBytes !== undefined && (!Number.isSafeInteger(file.sizeBytes) || file.sizeBytes < 0))) {
       return null;
     }
@@ -49,6 +51,7 @@ export function mapDriveFiles(files: readonly DriveFile[]): MediaItem[] {
         file.mimeType.includes('pdf') ? 'pdf' : file.mimeType.includes('text') ? 'text' : 'image',
       size: file.sizeBytes === undefined ? 'Drive' : file.sizeBytes < 1048576 ? `${Math.ceil(file.sizeBytes / 1024)} KB` : `${(file.sizeBytes / 1048576).toFixed(1)} MB`,
       sizeBytes: file.sizeBytes,
+      preserved: file.preserved === true,
       mimeType: file.mimeType,
       date: new Date(file.date),
       eventName: file.folderName || 'Geral',
