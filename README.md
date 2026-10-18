@@ -4,6 +4,12 @@ Aplicação React/Vite para organizar e transferir mídias usadas na igreja. Rep
 
 Produção autorizada pelo responsável em 18/10/2026: https://churchdrop2.vercel.app/ . A biblioteca exige o código privado de operador; o projeto antigo churchdrop.vercel.app permanece separado. A configuração assinada do novo Drive está ativa em produção e Preview, sem migrar o acervo legado.
 
+## Manter o acesso neste aparelho
+
+Use o endereço fixo de produção. Sessões são do navegador/endereço: links diferentes de Preview não compartilham o acesso. No login, marque Este aparelho é meu para manter a sessão por sete dias; se já estiver conectado temporariamente, Lembrar 7 dias salva a sessão atual sem reenviar o código. A barra mostra a data de validade. Atualizações com as mesmas chaves e domínio mantêm a sessão; expiração, limpeza dos dados do navegador, Sair e troca de código/chaves continuam encerrando o acesso.
+
+Apenas a preferência de lembrar é guardada no localStorage, nunca o código ou o cookie de sessão. Campos possuem identificação estável para o gerenciador de senhas do navegador, cujo salvamento depende da escolha do usuário. Sair remove a sessão e limpa a preferência; em aparelho emprestado, não marque como seu. O limite continua em sete dias, sem renovação silenciosa indefinida.
+
 ## Executar
 
 Use Node.js 24 e npm:

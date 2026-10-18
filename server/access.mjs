@@ -37,13 +37,26 @@ export function createAccessHandler({environment = process.env, drive = callDriv
       if (!['GET', 'POST', 'DELETE'].includes(request.method)) return json({error: 'Método não permitido.'}, 405, headers);
       if (environment.UNIVER_DRIVE_ENABLED !== 'true') return json({enabled: false, authenticated: false}, 200, headers);
       if (request.method === 'GET') {
-        try { await requireAccess(request, headers, {environment, now}); return json({enabled: true, authenticated: true}, 200, headers); }
+        try {
+          const session = await requireAccess(request, headers, {environment, now});
+          const remembered = session.remembered === true || (session.remembered === undefined && session.expiresAt - now() > 8 * 3600000);
+          return json({enabled: true, authenticated: true, remembered, expiresAt: session.expiresAt}, 200, headers);
+        }
         catch (error) { if (error instanceof HttpError && error.status === 401) return json({enabled: true, authenticated: false}, 200, headers); throw error; }
       }
       sameOriginWrite(request);
       const session = await getIronSession(webCookies(request, headers), sessionOptions(environment));
       if (request.method === 'DELETE') { session.destroy(); return json({success: true}, 200, headers); }
       const input = await readJson(request, 2048);
+      if (input.action === 'remember') {
+        if (input.remember !== true) throw new HttpError(400, 'Confirme que deseja lembrar este aparelho.');
+        await requireAccess(request, headers, {environment, now});
+        session.updateConfig(sessionOptions(environment, true));
+        session.remembered = true;
+        session.expiresAt = now() + MAX_TTL * 1000;
+        await session.save();
+        return json({success: true, remembered: true, expiresAt: session.expiresAt}, 200, headers);
+      }
       if (typeof input.code !== 'string' || !/^\d{10}$/.test(input.code) || typeof input.remember !== 'boolean') {
         throw new HttpError(400, 'Informe os 10 números do código de acesso.');
       }
@@ -54,9 +67,10 @@ export function createAccessHandler({environment = process.env, drive = callDriv
       if (!timingSafeEqual(actual, Buffer.from(expected, 'hex'))) throw new HttpError(401, 'O código não confere. Verifique e tente novamente.');
       session.updateConfig(sessionOptions(environment, input.remember));
       session.authorized = true;
+      session.remembered = input.remember;
       session.expiresAt = now() + (input.remember ? MAX_TTL : 8 * 3600) * 1000;
       await session.save();
-      return json({success: true}, 200, headers);
+      return json({success: true, remembered: input.remember, expiresAt: session.expiresAt}, 200, headers);
     } catch (error) { return errorResponse(error, headers); }
   };
 }

@@ -55,6 +55,42 @@ test('remembered sessions persist; wrong codes and exhausted budget cannot issue
   assert.equal(denied.headers.get('set-cookie'), null);
 });
 
+test('a remembered login survives a new handler/deployment with the same keys until its real expiry',async()=>{
+  const old=createAccessHandler({environment:{...environment,VERCEL_URL:'previous-preview.example'},drive:async()=>({allowed:true})});
+  const login=await old(request(undefined,'POST',{code,remember:true}));
+  const next=createAccessHandler({environment:{...environment,VERCEL_URL:'new-deployment.example'},drive:async()=>{throw Error('No new login needed');}});
+  const authenticated=request(undefined,'GET',undefined,{cookie:cookie(login)});
+  const response=await next(authenticated);const data=await response.json();
+  assert.equal(data.authenticated,true);assert.equal(data.remembered,true);assert.ok(data.expiresAt>Date.now()+6*86400000);
+  await assert.rejects(requireAccess(authenticated,new Headers(),{environment,now:()=>Date.now()+8*86400000}),error=>error.status===401);
+});
+
+test('an authenticated temporary session can remember its device without resending the access code',async()=>{
+  let claims=0;
+  const handler=createAccessHandler({environment,drive:async()=>{claims++;return {allowed:true};}});
+  const login=await handler(request(undefined,'POST',{code,remember:false}));
+  const current={cookie:cookie(login)};
+  const temporary=await(await handler(request(undefined,'GET',undefined,current))).json();
+  assert.equal(temporary.remembered,false);
+  const remembered=await handler(request(undefined,'POST',{action:'remember',remember:true},current));
+  assert.equal(remembered.status,200);assert.ok(remembered.headers.get('set-cookie').includes('Max-Age=604740'));
+  assert.equal(claims,1);
+  const saved=await(await handler(request(undefined,'GET',undefined,{cookie:cookie(remembered)}))).json();
+  assert.equal(saved.remembered,true);assert.ok(saved.expiresAt>Date.now()+6*86400000);
+});
+
+test('remember-device refuses anonymous, expired, cross-site and unconfirmed requests without spending login budget',async()=>{
+  let claims=0;
+  const handler=createAccessHandler({environment,drive:async()=>{claims++;return {allowed:true};}});
+  assert.equal((await handler(request(undefined,'POST',{action:'remember',remember:true}))).status,401);
+  assert.equal((await handler(request(undefined,'POST',{action:'remember',remember:false}))).status,400);
+  assert.equal((await handler(request(undefined,'POST',{action:'remember',remember:true},{origin:'https://attacker.example'}))).status,403);
+  assert.equal(claims,0);
+  const login=await handler(request(undefined,'POST',{code,remember:false}));
+  const expired=createAccessHandler({environment,now:()=>Date.now()+9*3600000,drive:async()=>{throw Error('No login');}});
+  assert.equal((await expired(request(undefined,'POST',{action:'remember',remember:true},{cookie:cookie(login)}))).status,401);
+});
+
 test('cross-site writes, invalid codes and oversized bodies do not consume the Drive login budget', async () => {
   let calls = 0;
   const handler = createAccessHandler({environment, drive: async () => {calls++; return {allowed: true};}});
