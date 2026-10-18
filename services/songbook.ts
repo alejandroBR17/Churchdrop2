@@ -1,4 +1,4 @@
-import {formatLyrics} from './lyricsFormatter.ts';
+import {formatLyrics,isSongCollectionHeading} from './lyricsFormatter.ts';
 import type {FormatterOptions, LyricChange, LyricReview} from './lyricsFormatter.ts';
 
 export interface PreparedSong {title:string; lyrics:string; changes:LyricChange[]; review:LyricReview[];}
@@ -6,7 +6,7 @@ const heading = /^\s*(?:[🔴🟠🟡🟢🔵🟣⚫⚪]\s*|#{1,6}\s+|(?:t[ií]t
 const nameWord = /^(?:\p{Lu}[\p{L}'’-]+|de|da|do|das|dos|e)$/u;
 const devotional = /\b(?:eu|tu|ti|n[oó]s|v[oó]s|meu|minha|teu|tua|nosso|senhor|jesus|cristo|deus|esp[ií]rito|santo|aleluia|am[eé]m|quando|como|n[aã]o|sim)\b/iu;
 function authorBelowTitle(value:string):boolean {
-  const text=value.replace(/^\s*\(\s*|\s*\)\s*$/g,'').trim();
+  const text=value.replace(/^\s*\(\s*|\s*\)\s*$/g,'').replace(/^(?:Pr\.?|Pastor|Pra\.?|Pastora)\s+/iu,'').trim();
   const words=text.split(/\s+/);
   return words.length>=2 && words.length<=6 && !devotional.test(text) && words.every(word=>nameWord.test(word));
 }
@@ -16,12 +16,15 @@ export function prepareSongs(input:string, options:FormatterOptions={}):{songs:P
   if(input.length>100000)return {songs:[],error:'O texto está muito longo. Cole menos músicas por vez.'};
   const lines=input.replace(/\r\n?|[\u2028\u2029]/g,'\n').split('\n');
   const starts:number[]=[];
+  let nextIsTitle=false;
   lines.forEach((line,index)=>{
     if(!line.trim())return;
-    if(starts.length && !heading.test(line))return;
+    if(isSongCollectionHeading(line)){nextIsTitle=true;return;}
+    if(starts.length && !heading.test(line) && !nextIsTitle)return;
     const plain=formatLyrics(line,{firstLineIsTitle:false,linesPerSlide:0,removeCredits:false}).text;
     if(!plain)return;
-    if(!starts.length || (heading.test(line) && !/^(?:refr[aã]o|trecho|ponte|intro|solo)(?:\s|$)/iu.test(plain)))starts.push(index);
+    if(!starts.length || nextIsTitle || (heading.test(line) && !/^(?:refr[aã]o|trecho|ponte|intro|solo)(?:\s|$)/iu.test(plain)))starts.push(index);
+    nextIsTitle=false;
   });
   const songs:PreparedSong[]=[];
   starts.forEach((start,position)=>{

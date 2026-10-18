@@ -78,3 +78,19 @@ test('library dates use Brasília midnight and selection dates include different
  assert.deepEqual(libraryDays(items),[{key:'2026-10-18',label:'18/10/2026',count:2},{key:'2026-10-17',label:'17/10/2026',count:1}]);
  assert.deepEqual(items.filter(item=>uploadDay(item.date)==='2026-10-18').map(item=>item.id),['b','c']);
 });
+
+test('plain hymn and keyboard-player collection split correctly and remove playing instructions',()=>{
+ const input='Quão Grande És Tu\n\nSenhor, meu Deus\nQuando eu, maravilhado\n— Refrão\nEntão minh\'alma canta a Ti, Senhor\n— Canta o refrão\nTrecho\nE quando enfim, Jesus vier em glória\n Canta o refrão\n\nMúsicas Tecladista I 🎹:\nGuarda a Minha Casa 🎵\nPr Iran Santos\n\nMeu Deus como eu preciso\nDo Senhor\n[Trecho]\nMal nenhum me sucederá\n[Refrão]\nGuarda a minha casa meu Pai\n↑ ( Trecho ) ↑\nRefrão\nRefrão Bateria';
+ const {songs}=prepareSongs(input);
+ assert.deepEqual(songs.map(song=>song.title),['Quão Grande És Tu','Guarda a Minha Casa']);
+ assert.ok(songs[0].lyrics.startsWith('Senhor, meu Deus\nQuando eu, maravilhado'));
+ assert.ok(songs[0].lyrics.includes('Então minh\'alma canta a Ti, Senhor'));
+ assert.ok(songs[1].lyrics.includes('Meu Deus como eu preciso\nDo Senhor'));
+ for(const song of songs)assert.ok(!/refrão|trecho|bateria|tecladista|Iran|Santos|↑|🎹|🎵/iu.test(song.lyrics));
+});
+
+test('instruction recognition does not strip ordinary lyric lines containing music words',()=>{
+ const {songs}=prepareSongs('Canção\n\nEu canto o refrão da esperança\nMeu coração é um teclado de amor\nO som da bateria anuncia alegria');
+ assert.ok(songs[0].lyrics.includes('Eu canto o refrão da esperança'));
+ assert.ok(songs[0].lyrics.includes('O som da bateria anuncia alegria'));
+});

@@ -23,8 +23,12 @@ const metadata = /^(?:autor(?:a)?|compositor(?:a)?|int[eé]rprete|cantor(?:a)?|a
 const chord = /^[A-G](?:#|b)?(?:(?:maj|min|dim|aug|sus|add|m|M)?\d*(?:M|maj|sus|add)?\d*(?:\([\d+#b,/-]+\))?)(?:\/[A-G](?:#|b)?)?$/u;
 function unwrap(text: string) {return text.replace(/^[([{]\s*|\s*[)\]}]$/g, '').trim();}
 function isMarker(value: string) {
-  const text = unwrap(value).replace(/:\s*$/, '').replace(/\s+(?:\d{1,2}\s*[x×]|[x×]\s*\d{1,2})\s*$/iu, '').trim();
+  const text = unwrap(value).replace(/^[—–-]\s*/, '').replace(/^(?:canta(?:r)?|cante|repetir|repete)\s+(?:o\s+|a\s+)?/iu, '')
+    .replace(/\s+(?:bateria|teclado|tecladista|viol[aã]o)\s*$/iu, '').replace(/:\s*$/, '').replace(/\s+(?:\d{1,2}\s*[x×]|[x×]\s*\d{1,2})\s*$/iu, '').trim();
   return section.test(text) || repeat.test(unwrap(value));
+}
+export function isSongCollectionHeading(text:string):boolean {
+  return /^m[uú]sicas?\s+(?:(?:do|da|para)\s+)?(?:tecladista|baterista|violonista|m[uú]sicos|louvor)(?:\s|:|$)/iu.test(text.trim());
 }
 function chordLine(text: string) {
   const tokens = text.replace(/[|:]/g, ' ').trim().split(/\s+/);
@@ -67,7 +71,7 @@ export function formatLyrics(input: string, options: FormatterOptions = {}): For
         text = ''; reasons.push('Linha de seção ou formatação');
       }
     }
-    if (config.removeCredits && (metadata.test(unwrap(text)) || /^https?:\/\/\S+$/i.test(text) || /^\[(?:ar|al|by|offset):.*\]$/i.test(text))) {
+    if (config.removeCredits && (isSongCollectionHeading(text) || metadata.test(unwrap(text)) || /^https?:\/\/\S+$/i.test(text) || /^\[(?:ar|al|by|offset):.*\]$/i.test(text))) {
       text = ''; reasons.push('Crédito ou metadado identificado');
     }
     if (config.removeChords && chordLine(text)) {text = ''; reasons.push('Linha composta por cifras');}
