@@ -100,3 +100,15 @@ test('upload origin comes from the authenticated API URL, never from caller JSON
   assert.equal(response.status, 200);
   assert.equal(operation.origin, 'https://app.example');
 });
+
+test('media API prefers the official browser download link only for the same file and preserves resource keys', async () => {
+  const base={id:'file-123',name:'Arquivo.txt',mimeType:'text/plain',size:'10',resourceKey:'isolated-resource',appProperties:{sharing:'link',uploadedAt:'2026-10-17T12:00:00Z'}};
+  for(const provided of ['https://drive.usercontent.google.com/download?id=file-123&export=download&resourcekey=isolated-resource','https://attacker.example/uc?id=file-123&export=download','https://drive.google.com/uc?id=other-file&export=download']) {
+    const handler=createMediaHandler({environment,authorize:async()=>{},drive:async()=>({files:[{...base,webContentLink:provided}]})});
+    const data=await(await handler(request('/api/media'))).json();
+    const link=new URL(data.files[0].downloadUrl);
+    assert.equal(link.searchParams.get('id'),'file-123');
+    assert.equal(link.searchParams.get('resourcekey'),'isolated-resource');
+    assert.equal(link.hostname,provided.includes('drive.usercontent.google.com')?'drive.usercontent.google.com':'drive.google.com');
+  }
+});

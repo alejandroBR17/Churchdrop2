@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {createZipDownload, zipEligibility} from './services/zipDownload';
+import {requestNativeDownload, clearNativeDownloads} from './services/nativeDownload';
+import {DownloadQueueModal} from './components/DownloadQueueModal';
 import { 
   Plus, Grid, List, Search, RefreshCw, Loader2, Sparkles, 
   Trash2, Edit3, Download, Eye, FileText, Video, Music, 
@@ -63,6 +65,8 @@ export default function App() {
   const [viewerItem, setViewerItem] = useState<MediaItem | null>(null);
   const [activeAudioItem, setActiveAudioItem] = useState<MediaItem | null>(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [downloadQueue, setDownloadQueue] = useState<MediaItem[] | null>(null);
+  useEffect(()=>()=>clearNativeDownloads(),[]);
   const [showHolyricsModal, setShowHolyricsModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showStatsModal, setShowStatsModal] = useState(false);
@@ -246,21 +250,18 @@ export default function App() {
     setSelectedIds([]);
   };
 
-  // Download File Handler
+  // Native download: do not open a Drive tab or load whole video files in JS.
   const handleDownload = (url: string) => {
-    if (!url) {
-      showToast('Link de download não disponível', 'error');
-      return;
-    }
-    const link = document.createElement('a');
-    link.href = url;
-    link.target = '_blank';
-    link.rel = 'noopener noreferrer';
-    link.download = '';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    showToast('Iniciando download...', 'info');
+    try {
+      const file = items.find(item=>item.downloadUrl===url);
+      requestNativeDownload(url,file?.name);
+      showToast('Download solicitado. Confira os downloads do navegador.', 'info');
+    } catch(error) {showToast(error instanceof Error ? error.message : 'Não foi possível solicitar o download.', 'error');}
+  };
+  const handleSeparateDownloads = () => {
+    if(!selectedItems.length)return;
+    if(selectedItems.length===1)handleDownload(selectedItems[0].downloadUrl);
+    else setDownloadQueue([...selectedItems]);
   };
 
   // Bulk Download as ZIP
@@ -652,18 +653,21 @@ export default function App() {
 
       </div>
 
+      {downloadQueue && <DownloadQueueModal files={downloadQueue} onClose={()=>setDownloadQueue(null)}/>}
       {/* Floating Batch Action Toolbar */}
       <BatchActionBar 
         downloadBusy={zipProgress !== null}
         downloadStatus={zipProgress ? `Preparando ${zipProgress.done} de ${zipProgress.total} arquivos…` : undefined}
-        downloadNotice={zipError || (selectedIds.length > 1 ? zipAvailability.reason : '')}
+        downloadNotice={zipError}
         downloadUnavailable={selectedIds.length > 1 && !zipAvailability.allowed}
         onCancelDownload={() => zipRequest.current?.abort()}
         selectedCount={selectedIds.length}
         totalCount={filteredItems.length}
         onSelectAll={handleSelectAll}
         onClearSelection={handleClearSelection}
-        onBulkDownload={handleBulkDownload}
+        onBulkDownload={handleSeparateDownloads}
+        onZipDownload={handleBulkDownload}
+        zipReason={zipAvailability.reason}
         onBulkDelete={() => setIsBulkDeleteConfirm(true)}
         onBulkCopyLinks={handleBulkCopyLinks}
       />

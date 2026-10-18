@@ -19,9 +19,17 @@ function fileDto(file) {
   const download = new URL('https://drive.google.com/uc');
   download.searchParams.set('export', 'download'); download.searchParams.set('id', fileId);
   if (typeof file.resourceKey === 'string') download.searchParams.set('resourcekey', file.resourceKey);
+  let browserLink = download.href;
+  try {
+    const provided = new URL(file.webContentLink);
+    if (provided.protocol === 'https:' && !provided.port && !provided.username && !provided.password && !provided.hash &&
+        ((provided.hostname === 'drive.google.com' && provided.pathname === '/uc') ||
+         (provided.hostname === 'drive.usercontent.google.com' && provided.pathname === '/download')) &&
+        provided.searchParams.get('id') === fileId && provided.searchParams.get('export') === 'download') browserLink = provided.href;
+  } catch { /* Older metadata still has the canonical direct-download fallback. */ }
   return {id: fileId, name: name(file.name), mimeType: file.mimeType, date: properties.uploadedAt,
     sizeBytes: Number(file.size) || 0, folderName: properties.eventName || 'Geral',
-    downloadUrl: download.href, thumbnailLink: typeof file.thumbnailLink === 'string' ? file.thumbnailLink : undefined,
+    downloadUrl: browserLink, thumbnailLink: typeof file.thumbnailLink === 'string' ? file.thumbnailLink : undefined,
     preserved: properties.preserve === '1'};
 }
 

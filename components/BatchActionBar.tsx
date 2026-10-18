@@ -1,5 +1,5 @@
 import React from 'react';
-import { Download, Trash2, CheckSquare, Square, X, Copy, Tag } from 'lucide-react';
+import { Download, Trash2, CheckSquare, Square, X, Copy, FileArchive } from 'lucide-react';
 import { MediaItem } from '../types';
 
 interface BatchActionBarProps {
@@ -8,6 +8,8 @@ interface BatchActionBarProps {
   onSelectAll: () => void;
   onClearSelection: () => void;
   onBulkDownload: () => void;
+  onZipDownload: () => void;
+  zipReason?: string;
   onBulkDelete: () => void;
   onBulkCopyLinks: () => void;
   downloadBusy?: boolean;
@@ -22,7 +24,7 @@ export const BatchActionBar: React.FC<BatchActionBarProps> = ({
   totalCount,
   onSelectAll,
   onClearSelection,
-  onBulkDownload,
+  onBulkDownload, onZipDownload, zipReason,
   onBulkDelete,
   onBulkCopyLinks,
   downloadBusy = false, downloadStatus, downloadNotice, downloadUnavailable = false, onCancelDownload
@@ -62,15 +64,16 @@ export const BatchActionBar: React.FC<BatchActionBarProps> = ({
           </button>
 
           <button 
-            disabled={downloadBusy || downloadUnavailable}
+            disabled={downloadBusy}
             onClick={onBulkDownload}
             className="p-2 bg-univer-blue hover:bg-blue-600 text-white rounded-xl transition-colors text-xs font-bold flex items-center gap-1.5 shadow-md shadow-blue-900/50 disabled:opacity-40 disabled:cursor-not-allowed"
             title="Baixar selecionados em lote"
           >
             <Download size={15} />
-            <span>{downloadBusy ? 'Preparando…' : selectedCount === 1 ? 'Baixar' : 'Baixar ZIP'}</span>
+            <span>{selectedCount === 1 ? 'Baixar' : 'Baixar separados'}</span>
           </button>
 
+          {selectedCount>1 && <button disabled={downloadBusy || downloadUnavailable} onClick={onZipDownload} className="p-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 disabled:opacity-40" title={downloadUnavailable ? zipReason : 'Baixar como ZIP'} aria-label="Baixar como ZIP"><FileArchive size={15}/><span>{downloadBusy ? 'Preparando…' : 'ZIP'}</span></button>}
           <button 
             disabled={downloadBusy}
             onClick={onBulkDelete}

@@ -1,5 +1,6 @@
 import {useBodyScrollLock} from '../hooks/useBodyScrollLock';
-import React, { useState, useEffect } from 'react';
+import React, {useMemo, useState} from 'react';
+import {formatLyrics} from '../services/lyricsFormatter';
 import { X, Sparkles, Copy, Check, FileText, RefreshCw, Wand2, HelpCircle, Play, Trash2 } from 'lucide-react';
 
 interface HolyricsFormatterModalProps {
@@ -35,7 +36,6 @@ export const HolyricsFormatterModal: React.FC<HolyricsFormatterModalProps> = ({
   showToast
 }) => {
   const [rawText, setRawText] = useState('');
-  const [formattedText, setFormattedText] = useState('');
   const [copied, setCopied] = useState(false);
   const [stanzasMaxLines, setStanzasMaxLines] = useState<number>(2);
   const [removeEmojis, setRemoveEmojis] = useState(true);
@@ -43,156 +43,18 @@ export const HolyricsFormatterModal: React.FC<HolyricsFormatterModalProps> = ({
   const [removeCredits, setRemoveCredits] = useState(true);
   const [uppercaseTitle, setUppercaseTitle] = useState(true);
 
-  // Comprehensive Regex engine for Emojis & Symbols (Step 1/2)
-  const cleanEmojisAndSymbols = (str: string): string => {
-    return str
-      // Comprehensive Unicode Emojis, Symbols, Pictographs, Enclosed Alphanumerics & Shapes
-      .replace(/[\u{1F300}-\u{1F9FF}]|[\u{1F600}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F1E6}-\u{1F1FF}]|[\u{1F900}-\u{1F9FF}]|[🔴🟠🟡🟢🔵🟣⚫⚪🟤🎵🎶✝️🙏🔥✨🎤🎸🎹🕊️⛪✝️⚡⭐🌟💥👑💡📜📖📌🚩🏷️]/gu, '')
-      // Remove unwanted markdown bullet prefixes (*, -, #, •, ~) at start of line
-      .replace(/^[\s#\*\-•~>]+/g, '')
-      .trim();
-  };
-
-  // Robust check for repeat markers, section headers, and credits (Step 1/2 Engine)
-  const isNoiseLine = (line: string): { isNoise: boolean; reason: 'credit' | 'section' } => {
-    const trimmed = line.trim();
-    if (!trimmed) return { isNoise: false, reason: 'section' };
-
-    // 1. Any line enclosed entirely in brackets/parentheses/braces/chevrons e.g. ( Fernando Rodrigues ), ( Trecho ), ( Refrão ) 2x, [ Intro ], (2x), [x2]
-    const enclosedPattern = /^[\(\[\{<].*[\)\]\}>]\s*(\d+x|x\d+)?\s*$/i;
-    if (enclosedPattern.test(trimmed)) {
-      const authorKeywords = /autor|compositor|cantor|ministro|por|art|banda|letras|música/i;
-      const isAuthor = authorKeywords.test(trimmed) || (!/refrã|coro|intro|ponte|solo|bis|2x|3x|4x|x2|x3|trecho|verso|tag|coda|ministração/i.test(trimmed));
-      return { isNoise: true, reason: isAuthor ? 'credit' : 'section' };
-    }
-
-    // 2. Standalone multipliers e.g. 2x, 3x, 4x, (2x), [2x], x2, (x2)
-    const repeatPattern = /^[\(\[\{]?\s*(\d+x|x\d+)\s*[\)\]\}]?$/i;
-    if (repeatPattern.test(trimmed)) {
-      return { isNoise: true, reason: 'section' };
-    }
-
-    // 3. Metadata labels e.g. Autor: ..., Compositor: ..., Tom: ..., BPM: ...
-    const labelPattern = /^\s*(autor|compositor|cantor|artista|banda|tom|bpm|cifra|letra|versão|arranjo)\s*:/i;
-    if (labelPattern.test(trimmed)) {
-      return { isNoise: true, reason: 'credit' };
-    }
-
-    // 4. Standalone section headings e.g. Refrão, Coro, Intro, Introdução, Ponte, Verso 1, Trecho, Solo, Ministração, Bis, Tag, Coda
-    const sectionPattern = /^\s*(refrão|refrã|coro|verso\s*\d*|trecho|intro|introdução|ponte|bridge|solo|bis|ministração|pré-refrão|pre-chorus|final|coda|tag|parte\s*\d*)\s*:?\s*(\d+x|x\d+)?\s*$/i;
-    if (sectionPattern.test(trimmed)) {
-      return { isNoise: true, reason: 'section' };
-    }
-
-    return { isNoise: false, reason: 'section' };
-  };
-
-  // Main formatting logic (Etapa 2/2 Complete Engine)
-  const processFormatting = (text: string): string => {
-    if (!text.trim()) return '';
-
-    const lines = text.split('\n');
-    let extractedAuthor = '';
-    const cleanedLines: string[] = [];
-
-    lines.forEach((line) => {
-      let l = line.trim();
-
-      // Clean emojis and extra bullet characters if option enabled
-      if (removeEmojis) {
-        l = cleanEmojisAndSymbols(l);
-      }
-
-      if (!l) {
-        cleanedLines.push('');
-        return;
-      }
-
-      // Check for noise lines (credits/authors/section tags)
-      const noiseCheck = isNoiseLine(l);
-      if (noiseCheck.isNoise) {
-        if (noiseCheck.reason === 'credit') {
-          // Extract author/credit if we want to keep it
-          if (!removeCredits && !extractedAuthor) {
-            extractedAuthor = l.replace(/^[\(\[\{<]|[\)\]\}>]$/g, '').trim();
-          }
-          return; // Strip credit from general lyric body
-        }
-        if (noiseCheck.reason === 'section' && removeSectionTags) return;
-      }
-
-      // Strip inline brackets or multipliers anywhere in the line e.g. (2x), [Refrão], (x2), ( Trecho )
-      if (removeSectionTags) {
-        l = l.replace(/[\(\[\{]\s*(refrão|refrã|coro|intro|introdução|ponte|bridge|solo|bis|ministração|trecho|verso\s*\d*|\d+x|x\d+)\s*[\)\]\}]/gi, '').trim();
-        l = l.replace(/\s+(\d+x|x\d+)\s*$/gi, '').trim();
-        // Remove trailing colons or excess space left over
-        l = l.replace(/^[\s:\-•~>]+|[\s:\-•~>]+$/g, '').trim();
-      }
-
-      if (l) {
-        cleanedLines.push(l);
-      }
-    });
-
-    // Remove leading and trailing empty lines
-    while (cleanedLines.length > 0 && cleanedLines[0] === '') cleanedLines.shift();
-    while (cleanedLines.length > 0 && cleanedLines[cleanedLines.length - 1] === '') cleanedLines.pop();
-
-    if (cleanedLines.length === 0) return '';
-
-    // Title line is line 0
-    const rawTitle = cleanedLines[0].replace(/^[\s:\-•~>]+|[\s:\-•~>]+$/g, '');
-    let title = uppercaseTitle ? rawTitle.toUpperCase() : rawTitle;
-
-    // Attach author credit if kept
-    if (!removeCredits && extractedAuthor) {
-      title += `\n(${extractedAuthor})`;
-    }
-
-    // Remaining lyric lines
-    const lyricLines = cleanedLines.slice(1).filter(l => l.length > 0);
-
-    const slides: string[] = [title];
-
-    if (stanzasMaxLines === 0) {
-      // Preserve original paragraph blocks
-      let currentParagraph: string[] = [];
-      cleanedLines.slice(1).forEach(line => {
-        if (line === '') {
-          if (currentParagraph.length > 0) {
-            slides.push(currentParagraph.join('\n'));
-            currentParagraph = [];
-          }
-        } else {
-          currentParagraph.push(line);
-        }
-      });
-      if (currentParagraph.length > 0) {
-        slides.push(currentParagraph.join('\n'));
-      }
-    } else {
-      // Group into N lines per slide (e.g. max 2 lines per slide for Holyrics)
-      let currentSlide: string[] = [];
-      lyricLines.forEach(line => {
-        currentSlide.push(line);
-        if (currentSlide.length === stanzasMaxLines) {
-          slides.push(currentSlide.join('\n'));
-          currentSlide = [];
-        }
-      });
-      if (currentSlide.length > 0) {
-        slides.push(currentSlide.join('\n'));
-      }
-    }
-
-    return slides.join('\n\n');
-  };
-
-  // Real-time update whenever rawText or options change
-  useEffect(() => {
-    const result = processFormatting(rawText);
-    setFormattedText(result);
-  }, [rawText, stanzasMaxLines, removeEmojis, removeSectionTags, removeCredits, uppercaseTitle]);
+  const [removeChords, setRemoveChords] = useState(true);
+  const [firstLineIsTitle, setFirstLineIsTitle] = useState(true);
+  const [overrides, setOverrides] = useState<Record<number, 'keep' | 'remove'>>({});
+  const [reviewLimit, setReviewLimit] = useState(30);
+  const result = useMemo(()=>formatLyrics(rawText, {linesPerSlide:stanzasMaxLines,
+    removeSymbols:removeEmojis,removeSections:removeSectionTags,removeCredits,removeChords,
+    firstLineIsTitle,uppercaseTitle,overrides}),[rawText,stanzasMaxLines,removeEmojis,removeSectionTags,removeCredits,removeChords,firstLineIsTitle,uppercaseTitle,overrides]);
+  const formattedText = result.text;
+  const updateSource = (text: string) => {setRawText(text);setOverrides({});setCopied(false);setReviewLimit(30);};
+  const overrideLine = (line: number, action?: 'keep' | 'remove') => setOverrides(previous=>{
+    const next={...previous}; if(action)next[line]=action;else delete next[line];return next;
+  });
 
   const handleCopyFormatted = () => {
     if (!formattedText) {
@@ -211,7 +73,7 @@ export const HolyricsFormatterModal: React.FC<HolyricsFormatterModalProps> = ({
   };
 
   const loadSampleLyric = () => {
-    setRawText(SAMPLE_LYRIC);
+    updateSource(SAMPLE_LYRIC);
     showToast('Exemplo de louvor carregado e formatado!', 'info');
   };
 
@@ -282,7 +144,7 @@ export const HolyricsFormatterModal: React.FC<HolyricsFormatterModalProps> = ({
                   onChange={(e) => setRemoveEmojis(e.target.checked)}
                   className="rounded text-purple-600 focus:ring-purple-500 w-4 h-4 cursor-pointer"
                 />
-                <span>Remover emojis</span>
+                <span>Limpar emojis e símbolos</span>
               </label>
 
               <label className="flex items-center gap-2 cursor-pointer font-semibold text-neutral-700 dark:text-neutral-300 hover:text-purple-600 dark:hover:text-purple-400 transition-colors">
@@ -292,7 +154,7 @@ export const HolyricsFormatterModal: React.FC<HolyricsFormatterModalProps> = ({
                   onChange={(e) => setRemoveSectionTags(e.target.checked)}
                   className="rounded text-purple-600 focus:ring-purple-500 w-4 h-4 cursor-pointer"
                 />
-                <span>Remover Tags (Trecho / Refrão)</span>
+                <span>Remover seções e repetições</span>
               </label>
 
               <label className="flex items-center gap-2 cursor-pointer font-semibold text-neutral-700 dark:text-neutral-300 hover:text-purple-600 dark:hover:text-purple-400 transition-colors">
@@ -302,7 +164,7 @@ export const HolyricsFormatterModal: React.FC<HolyricsFormatterModalProps> = ({
                   onChange={(e) => setRemoveCredits(e.target.checked)}
                   className="rounded text-purple-600 focus:ring-purple-500 w-4 h-4 cursor-pointer"
                 />
-                <span>Remover Autores ( Fernando... )</span>
+                <span>Remover créditos identificados</span>
               </label>
 
               <label className="flex items-center gap-2 cursor-pointer font-semibold text-neutral-700 dark:text-neutral-300 hover:text-purple-600 dark:hover:text-purple-400 transition-colors">
@@ -314,9 +176,21 @@ export const HolyricsFormatterModal: React.FC<HolyricsFormatterModalProps> = ({
                 />
                 <span>Título em MAIÚSCULAS</span>
               </label>
+              <label className="flex items-start gap-2 text-neutral-700 dark:text-neutral-300"><input type="checkbox" checked={removeChords} onChange={e=>setRemoveChords(e.target.checked)}/><span>Remover linhas de cifras</span></label>
+              <label className="flex items-start gap-2 text-neutral-700 dark:text-neutral-300"><input type="checkbox" checked={firstLineIsTitle} onChange={e=>setFirstLineIsTitle(e.target.checked)}/><span>Primeira linha é o título</span></label>
             </div>
-
+            <p className="text-[11px] leading-relaxed text-neutral-500">Análise local, sem enviar a letra para uma IA. Frases duvidosas são mantidas para sua revisão.</p>
           </div>
+
+          {result.error && <p role="alert" className="text-sm text-rose-500">{result.error}</p>}
+          {(result.changes.length>0 || result.review.length>0) && <details className="rounded-2xl border border-neutral-200 dark:border-neutral-700 p-4">
+            <summary className="text-xs font-semibold cursor-pointer">Revisar limpeza · {result.changes.length} ajustes · {result.review.length} para revisar</summary>
+            <div className="mt-4 space-y-3">
+              {result.review.slice(0,reviewLimit).map(row=><div key={`review-${row.line}`} className="rounded-xl bg-amber-50 dark:bg-amber-950/30 p-3 text-xs space-y-2"><p className="font-semibold">Linha {row.line}: conteúdo mantido</p><p className="break-words whitespace-pre-wrap">{row.text}</p><p className="text-neutral-500 leading-relaxed">{row.reason}</p><button onClick={()=>overrideLine(row.line,'remove')} className="text-amber-700 dark:text-amber-300 underline underline-offset-4">Remover esta linha</button></div>)}
+              {result.changes.slice(0,reviewLimit).map(row=><div key={`change-${row.line}`} className="rounded-xl bg-neutral-50 dark:bg-neutral-800 p-3 text-xs space-y-2"><p className="font-semibold">Linha {row.line} · {row.kept ? 'Original mantido' : row.reason}</p><p className="break-words whitespace-pre-wrap text-neutral-500">{row.before}</p>{row.after && <p className="break-words whitespace-pre-wrap">{row.after}</p>}<button onClick={()=>overrideLine(row.line,row.kept ? undefined : 'keep')} className="text-blue-600 dark:text-blue-400 underline underline-offset-4">{row.kept ? 'Aplicar limpeza' : 'Manter original'}</button></div>)}
+              {Math.max(result.changes.length,result.review.length)>reviewLimit && <button onClick={()=>setReviewLimit(n=>n+30)} className="secondary-button">Mostrar mais alterações</button>}
+            </div>
+          </details>}
 
           {/* Text Areas Input / Output */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -329,7 +203,7 @@ export const HolyricsFormatterModal: React.FC<HolyricsFormatterModalProps> = ({
                 </label>
                 {rawText && (
                   <button 
-                    onClick={() => setRawText('')}
+                    onClick={() => updateSource('')}
                     className="text-[11px] font-bold text-rose-500 hover:underline flex items-center gap-1"
                   >
                     <Trash2 size={12} />
@@ -337,9 +211,9 @@ export const HolyricsFormatterModal: React.FC<HolyricsFormatterModalProps> = ({
                   </button>
                 )}
               </div>
-              <textarea
+              <textarea aria-label="Letra original"
                 value={rawText}
-                onChange={(e) => setRawText(e.target.value)}
+                onChange={(e) => updateSource(e.target.value)}
                 placeholder="Cole aqui a letra do louvor com emojis, parênteses, trecho, autor..."
                 className="w-full h-72 p-3.5 bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-200 dark:border-neutral-700/80 rounded-2xl text-xs font-mono text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-purple-500 transition-all resize-none custom-scrollbar leading-relaxed"
               />
@@ -354,11 +228,11 @@ export const HolyricsFormatterModal: React.FC<HolyricsFormatterModalProps> = ({
                 {formattedText && (
                   <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1">
                     <Check size={13} />
-                    <span>Pronto para o Holyrics</span>
+                    <span>{result.slides} blocos · revise antes de copiar</span>
                   </span>
                 )}
               </div>
-              <textarea
+              <textarea aria-label="Resultado para o Holyrics"
                 value={formattedText}
                 readOnly
                 placeholder="A letra formatada e dividida em slides aparecerá aqui automaticamente..."

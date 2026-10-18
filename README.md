@@ -35,6 +35,8 @@ O progresso mostra o arquivo atual (N de total), seus bytes confirmados e o tota
 
 O envio tem uma seleção principal de arquivos; data, evento/pasta e redução de fotos ficam em opções recolhidas. A confirmação de compartilhamento é obrigatória. O servidor associa cada sessão de upload à origem HTTPS da interface, para que o navegador possa ler a confirmação do Google.
 
+O botão Baixar solicita o arquivo ao navegador sem abrir outra aba do Drive. A API prefere o webContentLink oficial do próprio arquivo, com fallback para o link direto e preservando resourceKey. A fila Baixar separados permite solicitar todos com intervalo, pausar novas solicitações ou baixar o próximo/per-file. “Solicitado” não significa “salvo”: o navegador controla permissões para múltiplos downloads e não fornece confirmação ao app. Se o Google exigir confirmação, o link de verificação fica disponível por arquivo. Não há proxy de vídeo nem buffer integral em JS nesse caminho. ZIP é uma opção separada.
+
 O ZIP no navegador aceita até 20 arquivos, 20 MiB por arquivo e 50 MiB no conjunto, com tamanho conhecido. Seleções maiores continuam disponíveis por download individual. O app valida o tipo, o tamanho e o conteúdo recebido, recusa páginas HTML de erro e não entrega um ZIP parcial. O progresso pode ser cancelado; o empacotamento tem buffers adicionais e não representa um teto de memória RAM. A biblioteca ZIP só é carregada ao usar o recurso.
 
 O QR de abertura é gerado localmente, sem serviço externo, código de operador, parâmetros ou fragmentos da URL. Em Preview protegido, o outro aparelho ainda precisa da autorização Vercel; o QR não remove essa proteção.
@@ -46,6 +48,12 @@ Atualizações do worker removem somente os caches legados conhecidos desta inte
 A biblioteca usa navegação lateral no desktop e uma barra inferior no celular, com busca destacada, contagens derivadas dos arquivos carregados e agrupamento por evento. Cores, superfícies, campos, avisos e modais compartilham uma base visual clara/escura. O tema salvo é aplicado antes da primeira pintura, sem iniciar o tema oposto; a preferência do dispositivo é usada quando não há escolha salva. Zoom do navegador permanece permitido.
 
 A página rola normalmente. Somente overlays abertos bloqueiam o fundo; um controle compartilhado mantém o bloqueio durante sobreposições e restaura a rolagem ao fechar, inclusive na saída da sessão. O envio tem uma única área rolável, cabeçalho/ações acessíveis e resumo de progresso em destaque durante a transferência. O menu Adicionar abre o mesmo fluxo em Android e iOS; não tenta acionar um input ainda inexistente. Conteúdo e configurações remotas não são alterados pelo redesign.
+
+## Formatador para projeção
+
+services/lyricsFormatter.ts analisa cada linha localmente, sem IA remota, credenciais ou custo por uso. Limpa grupos de emoji (incluindo sequências, bandeiras e teclas), decoração, caracteres invisíveis e formas tipográficas; reconhece seções, repetições, tempos, créditos explicitamente rotulados e linhas compostas por cifras. Preserva palavras, acentos, pontuação comum e repetições cantadas. O agrupamento respeita estrofes, com opção de título ou letra sem título.
+
+Uma frase entre parênteses não é tratada como crédito por suposição. Conteúdos ambíguos ficam mantidos em Revisar limpeza; o operador pode remover uma linha, manter o original ou reaplicar a limpeza. O texto original permanece disponível. Regras locais não compreendem semanticamente qualquer letra e não garantem formato perfeito de qualquer fonte: revise antes de copiar. Textos acima de 100 mil caracteres são recusados explicitamente, sem truncar a origem. O resultado são blocos de texto separados por linhas vazias para copiar; não é importação automática no Holyrics.
 
 ## Estado da revisão
 
