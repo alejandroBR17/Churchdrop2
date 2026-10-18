@@ -74,7 +74,8 @@ export function createMediaHandler({environment = process.env, drive = callDrive
           operation = {action: 'preserve', id: id(input.id), preserve: input.preserve}; break;
         case 'retentionPreview':
           if (![7, 14].includes(input.days)) throw new HttpError(400, 'Escolha 7 ou 14 dias.');
-          operation = {action: 'retentionPreview', days: input.days}; break;
+          if (input.cursor !== undefined && (typeof input.cursor !== 'string' || !input.cursor || input.cursor.length > 2000)) throw new HttpError(400, 'Página inválida.');
+          operation = {action: 'retentionPreview', days: input.days, ...(input.cursor ? {pageToken: input.cursor} : {})}; break;
         default: throw new HttpError(400, 'Operação inválida.');
       }
       const result = await drive(operation, {environment, signal: request.signal});

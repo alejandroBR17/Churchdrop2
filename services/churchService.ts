@@ -110,3 +110,24 @@ export async function fetchFilesFromScript(signal?: AbortSignal): Promise<MediaI
   throw new Error('Não foi possível carregar a biblioteca completa. Tente novamente.');
 }
 export function getCachedFiles(): MediaItem[] { return mapDriveFiles(snapshot); }
+
+/** Read-only review. Never replaces the library snapshot or runs a cleanup. */
+export async function reviewOlderFiles(days: 7 | 14, signal?: AbortSignal): Promise<MediaItem[]> {
+  if (days !== 7 && days !== 14) throw new Error('Escolha 7 ou 14 dias.');
+  const all: DriveFile[] = [], cursors = new Set<string>();
+  let cursor: string | undefined;
+  for (let page = 0; page < 100; page++) {
+    const result = await appApi<{files: unknown; nextPageToken?: unknown}>('/api/media',
+      {action: 'retentionPreview', days, ...(cursor ? {cursor} : {})}, {signal});
+    const files = readDriveFiles(result.files);
+    if (!files) throw new Error('Não foi possível conferir os arquivos antigos.');
+    all.push(...files);
+    if (!result.nextPageToken) {
+      if (!readDriveFiles(all)) throw new Error('A revisão contém arquivos duplicados. Tente novamente.');
+      return mapDriveFiles(all);
+    }
+    if (typeof result.nextPageToken !== 'string' || result.nextPageToken.length > 2000 || cursors.has(result.nextPageToken)) break;
+    cursor = result.nextPageToken; cursors.add(cursor);
+  }
+  throw new Error('Não foi possível concluir a revisão. Tente novamente.');
+}

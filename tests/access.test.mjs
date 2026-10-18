@@ -111,6 +111,16 @@ test('pending uploads expose only identity and verified completion, never privat
   }
 });
 
+test('retention review forwards validated cursors and cannot request a cleanup', async()=>{
+  const operations=[];
+  const handler=createMediaHandler({environment,authorize:async()=>{},drive:async input=>{operations.push(input);return {files:[],nextPageToken:'next'};}});
+  const response=await handler(request('/api/media','POST',{action:'retentionPreview',days:14,cursor:'page/+=',cleanup:true}));
+  assert.equal(response.status,200);
+  assert.deepEqual(operations,[{action:'retentionPreview',days:14,pageToken:'page/+='}]);
+  for(const cursor of ['',12,'x'.repeat(2001)])assert.equal((await handler(request('/api/media','POST',{action:'retentionPreview',days:7,cursor}))).status,400);
+  assert.equal(operations.length,1);
+});
+
 test('media API prefers the official browser download link only for the same file and preserves resource keys', async () => {
   const base={id:'file-123',name:'Arquivo.txt',mimeType:'text/plain',size:'10',resourceKey:'isolated-resource',appProperties:{sharing:'link',uploadedAt:'2026-10-17T12:00:00Z'}};
   for(const provided of ['https://drive.usercontent.google.com/download?id=file-123&export=download&resourcekey=isolated-resource','https://attacker.example/uc?id=file-123&export=download','https://drive.google.com/uc?id=other-file&export=download']) {

@@ -2,10 +2,47 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {appApi} from '../services/appApi.ts';
 import {fetchFilesFromScript, getCachedFiles, clearOperatorData, renameFileInScript,
-  deleteFileFromScript, uploadFileToScript, groupItemsByEvent, getPendingUploads, publishPendingUpload} from '../services/churchService.ts';
+  deleteFileFromScript, uploadFileToScript, groupItemsByEvent, getPendingUploads, publishPendingUpload, reviewOlderFiles} from '../services/churchService.ts';
 
 const file = {id: 'isolated-file', name: 'Aviso.txt', mimeType: 'text/plain', date: '2026-10-17T12:00:00Z'};
 const json = (data, status = 200) => Response.json(data, {status});
+
+test('age review traverses empty filtered pages and never replaces the library or changes a file', async () => {
+  const operations=[];
+  await withFetch(async (_path, init)=>{
+    if(init.method==='GET')return json({files:[file]});
+    const body=JSON.parse(init.body); operations.push(body);
+    return body.cursor ? json({files:[{...file,id:'older-file'}]}) : json({files:[],nextPageToken:'page/+='});
+  },async()=>{
+    await fetchFilesFromScript();
+    const result=await reviewOlderFiles(14);
+    assert.equal(result[0].id,'older-file');
+    assert.deepEqual(operations,[{action:'retentionPreview',days:14},{action:'retentionPreview',days:14,cursor:'page/+='}]);
+    assert.deepEqual(getCachedFiles().map(item=>item.id),[file.id]);
+  });
+});
+
+test('age review refuses invalid periods, repeated pages and partial failures without claiming an empty result', async () => {
+  let mode='loop',calls=0;
+  await withFetch(async()=>{
+    calls++;
+    if(mode==='loop')return json({files:[],nextPageToken:'same'});
+    if(mode==='duplicate')return json({files:[file,file]});
+    return json({error:'Unavailable'},503);
+  },async()=>{
+    await assert.rejects(reviewOlderFiles(1)); assert.equal(calls,0);
+    await assert.rejects(reviewOlderFiles(7)); assert.equal(calls,2);
+    mode='duplicate';await assert.rejects(reviewOlderFiles(7));
+    mode='failure';calls=0;await assert.rejects(reviewOlderFiles(14),/Unavailable/);assert.equal(calls,1);
+  });
+});
+
+test('cancellation discards age-review results after the modal closes', async()=>{
+  const controller=new AbortController();
+  await withFetch(async()=>{controller.abort();return json({files:[file]});},async()=>{
+    await assert.rejects(reviewOlderFiles(14,controller.signal),error=>error.name==='AbortError');
+  });
+});
 
 test('pending metadata survives pagination atomically without persisting upload capabilities', async () => {
   let fail = false;

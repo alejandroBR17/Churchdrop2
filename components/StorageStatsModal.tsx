@@ -1,10 +1,11 @@
 import {useBodyScrollLock} from '../hooks/useBodyScrollLock';
-import React, { useState } from 'react';
+import React, {useEffect, useRef, useState} from 'react';
 import { 
   X, HardDrive, Database, RefreshCw, Trash2, ShieldCheck, 
   Activity, CheckCircle2, AlertTriangle, Layers
 } from 'lucide-react';
-import {clearLibraryCache, fetchFilesFromScript} from '../services/churchService';
+import {clearLibraryCache, fetchFilesFromScript, reviewOlderFiles} from '../services/churchService';
+import type {MediaItem} from '../types';
 
 interface StorageStatsModalProps {
   isOpen: boolean;
@@ -31,22 +32,38 @@ export const StorageStatsModal: React.FC<StorageStatsModalProps> = ({
 }) => {
   const [pinging, setPinging] = useState(false);
   const [latency, setLatency] = useState<number | null>(null);
+  const [reviewDays, setReviewDays] = useState<7 | 14>(14);
+  const [olderFiles, setOlderFiles] = useState<MediaItem[] | null>(null);
+  const [reviewError, setReviewError] = useState('');
+  const [reviewing, setReviewing] = useState(false);
+  const reviewRequest = useRef<AbortController | null>(null);
+  const diagnosticRequest = useRef<AbortController | null>(null);
+  useEffect(() => {
+    if (!isOpen) {
+      reviewRequest.current?.abort(); diagnosticRequest.current?.abort();
+      setOlderFiles(null); setReviewError(''); setReviewing(false); setPinging(false); setLatency(null);
+    }
+    return () => {reviewRequest.current?.abort(); diagnosticRequest.current?.abort();};
+  }, [isOpen]);
   useBodyScrollLock(isOpen);
   if (!isOpen) return null;
 
   const testConnection = async () => {
+    diagnosticRequest.current?.abort();
+    const controller = new AbortController(); diagnosticRequest.current = controller;
     setPinging(true);
     setLatency(null);
     const start = Date.now();
     try {
-      await fetchFilesFromScript();
+      await fetchFilesFromScript(controller.signal);
+      if (controller.signal.aborted) return;
       const duration = Date.now() - start;
       setLatency(duration);
       showToast(`Conexão OK! Latência: ${duration}ms`, 'success');
     } catch (e) {
-      showToast('Erro ao conectar ao servidor do Google Drive', 'error');
+      if (!controller.signal.aborted) showToast('Erro ao conectar ao servidor do Google Drive', 'error');
     } finally {
-      setPinging(false);
+      if (!controller.signal.aborted) setPinging(false);
     }
   };
 
@@ -57,12 +74,24 @@ export const StorageStatsModal: React.FC<StorageStatsModalProps> = ({
     onClose();
   };
 
+  const reviewAge = async () => {
+    reviewRequest.current?.abort();
+    const controller = new AbortController(); reviewRequest.current = controller;
+    setReviewing(true); setOlderFiles(null); setReviewError('');
+    try {
+      const files = await reviewOlderFiles(reviewDays, controller.signal);
+      if (!controller.signal.aborted) setOlderFiles(files);
+    } catch (error) {
+      if (!controller.signal.aborted) setReviewError(error instanceof Error ? error.message : 'Não foi possível revisar os arquivos.');
+    } finally {if (!controller.signal.aborted) setReviewing(false);}
+  };
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div role="dialog" aria-modal="true" aria-label="Diagnóstico do Servidor" className="workspace-dialog relative w-full max-w-lg bg-white dark:bg-neutral-900 rounded-3xl shadow-2xl border border-neutral-200/80 dark:border-neutral-800/80 overflow-hidden flex flex-col">
+      <div role="dialog" aria-modal="true" aria-label="Diagnóstico do Servidor" className="workspace-dialog relative w-full max-w-lg max-h-[90dvh] bg-white dark:bg-neutral-900 rounded-3xl shadow-2xl border border-neutral-200/80 dark:border-neutral-800/80 overflow-hidden flex flex-col">
         
         {/* Header */}
-        <div className="p-5 border-b border-neutral-100 dark:border-neutral-800/80 flex items-center justify-between bg-neutral-50/50 dark:bg-neutral-900/50">
+        <div className="p-5 border-b border-neutral-100 dark:border-neutral-800/80 flex items-center justify-between gap-3 shrink-0 bg-neutral-50/50 dark:bg-neutral-900/50">
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-sky-500/10 text-sky-500 flex items-center justify-center font-bold">
               <HardDrive size={20} />
@@ -78,10 +107,10 @@ export const StorageStatsModal: React.FC<StorageStatsModalProps> = ({
         </div>
 
         {/* Body */}
-        <div className="p-6 space-y-5">
+        <div className="dialog-scroll min-h-0 overflow-y-auto p-5 space-y-5">
           
           {/* Status Badge */}
-          <div className="p-4 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 rounded-2xl flex items-center justify-between">
+          <div className="p-4 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 rounded-2xl flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <CheckCircle2 size={24} className="text-emerald-500 shrink-0" />
               <div>
@@ -135,9 +164,28 @@ export const StorageStatsModal: React.FC<StorageStatsModalProps> = ({
             </div>
           </div>
 
+          <details className="rounded-2xl border border-neutral-200 dark:border-neutral-800">
+            <summary className="cursor-pointer p-3 text-sm font-semibold">Revisar arquivos antigos</summary>
+            <div className="px-3 pb-3 space-y-3">
+              <p className="text-xs leading-relaxed text-neutral-500 dark:text-neutral-400">Confira materiais publicados há 7 ou 14 dias. Arquivos preservados ficam fora desta revisão. A limpeza automática está desligada.</p>
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="min-w-0 flex-1 text-xs font-medium">Idade dos arquivos
+                  <select value={reviewDays} disabled={reviewing} onChange={event=>{setReviewDays(Number(event.target.value) as 7 | 14); setOlderFiles(null); setReviewError('');}} className="mt-1 block w-full rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 py-2.5 text-sm"><option value={7}>7 dias ou mais</option><option value={14}>14 dias ou mais</option></select>
+                </label>
+                <button type="button" disabled={reviewing} onClick={reviewAge} className="rounded-xl px-3 py-2.5 bg-blue-600 text-white text-xs font-semibold disabled:opacity-50">{reviewing ? 'Conferindo…' : 'Conferir arquivos'}</button>
+              </div>
+              {reviewError && <p role="alert" className="rounded-xl bg-rose-50 dark:bg-rose-950/30 p-3 text-xs text-rose-700 dark:text-rose-300">{reviewError}</p>}
+              {olderFiles !== null && <div role="status" className="space-y-2">
+                <p className="text-xs font-semibold">{olderFiles.length ? `${olderFiles.length} arquivo(s) para revisar` : 'Nenhum arquivo neste período.'}</p>
+                {olderFiles.length > 0 && <ul className="space-y-2">{olderFiles.map(file=><li key={file.id} className="rounded-xl bg-neutral-50 dark:bg-neutral-800 p-3"><p className="break-words text-xs font-medium">{file.name}</p><p className="mt-1 text-xs text-neutral-500">{file.date.toLocaleDateString('pt-BR')} · {file.size}</p></li>)}</ul>}
+              </div>}
+              <p className="text-xs text-neutral-500">Esta consulta não apaga nem altera arquivos. Revise o material na biblioteca antes de decidir o que remover.</p>
+            </div>
+          </details>
+
           {/* Clear Cache Action */}
-          <div className="p-3.5 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 rounded-2xl flex items-center justify-between">
-            <div>
+          <div className="p-3.5 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 rounded-2xl flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0 flex-1 basis-40">
               <span className="block text-xs font-bold text-amber-900 dark:text-amber-200">
                 Cache Local Armazenado
               </span>
@@ -147,7 +195,7 @@ export const StorageStatsModal: React.FC<StorageStatsModalProps> = ({
             </div>
             <button 
               onClick={clearCache}
-              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold transition-colors shadow-sm"
+              className="shrink-0 whitespace-nowrap px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold transition-colors shadow-sm"
             >
               Limpar Cache
             </button>
@@ -156,7 +204,7 @@ export const StorageStatsModal: React.FC<StorageStatsModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-neutral-100 dark:border-neutral-800/80 bg-neutral-50/50 dark:bg-neutral-900/50 flex justify-end">
+        <div className="p-4 shrink-0 border-t border-neutral-100 dark:border-neutral-800/80 bg-neutral-50/50 dark:bg-neutral-900/50 flex justify-end">
           <button 
             onClick={onClose}
             className="px-5 py-2 bg-neutral-200 dark:bg-neutral-800 hover:bg-neutral-300 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 rounded-xl text-xs font-bold transition-colors"
