@@ -84,3 +84,14 @@ A leitura da biblioteca faz no máximo uma nova tentativa após falha de transpo
 Esta importação prepara um ambiente para revisão; não representa auditoria completa. Testes automatizados devem interceptar APIs e sessões de upload ou usar origem isolada, preservando arquivos reais. Testes com respostas simuladas não confirmam CORS/Range, permissões ou download real do Google.
 
 Os resultados, limites e próximos testes estão consolidados em [pendências para avaliação](docs/pendencias-validacao-2026-10-18.md). Permanecem sete alertas conhecidos de ferramentas na cadeia Tailwind 3, cuja migração exige revisão visual e de compatibilidade. Vídeos grandes, downloads no aparelho e transferência incompleta após recarga não foram validados ponta a ponta. Não há licença definida pelo titular neste repositório nesta etapa. Produção foi autorizada e publicada em 18/10; esses limites continuam explícitos.
+
+
+## Link pessoal de acesso
+
+Em Meu link, o operador confirma o código e cria um endereço pessoal válido por 90 dias. Uma chave criptograficamente aleatória de 256 bits fica no fragmento #access=; o bootstrap remove esse fragmento antes de carregar recursos e o troca por uma sessão via POST de mesma origem. Código de operador e chave do Google nunca entram no link. O segredo só aparece na resposta de criação e na memória do modal; copie e guarde antes de fechar. Não há recuperação do segredo: criar outro substitui o anterior.
+
+Quem possuir o link terá os poderes de operador. Não o publique nem envie a grupos. A entrada por link é temporária por padrão (8 horas); Lembrar 7 dias é uma escolha explícita. Cada sessão continua limitada a sete dias e nunca ultrapassa o vencimento do link. Abrir o favorito pessoal novamente permite entrar sem código durante os 90 dias. Sair limpa a sessão deste navegador; não cancela o favorito.
+
+Criação e cancelamento exigem sessão válida, origem idêntica e nova confirmação do código, sujeita ao orçamento de tentativas existente. Não é possível prolongar um link apenas por possuí-lo. Hash com HMAC e validade ficam em Script Properties sob lock; não há segredo bruto no registro. Origem e credenciais separam produção de Preview. Troca de código/chave invalida links. Cancelar ou substituir bloqueia novas entradas e as próximas chamadas autenticadas de sessões derivadas, inclusive em outras instâncias; chamadas já em andamento e arquivos previamente baixados/compartilhados não são desfeitos. Sessões abertas por código são preservadas.
+
+A revogação durável exige uma consulta adicional ao Apps Script em cada requisição de sessão derivada de link, sem cache de autorização entre instâncias. Indisponibilidade do registro falha fechado, e não libera acesso por fallback. Não altera escopos, permissões, pasta ou materiais Google. A versão do backend com essas operações deve ser implantada antes da interface.

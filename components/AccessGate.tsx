@@ -1,7 +1,9 @@
 import React, {useEffect, useRef, useState} from 'react';
-import {KeyRound, Loader2, LogOut, ShieldCheck} from 'lucide-react';
+import {KeyRound, Link2, Loader2, LogOut, ShieldCheck} from 'lucide-react';
 import {appApi} from '../services/appApi';
 import {clearOperatorData} from '../services/churchService';
+import {clearAccessLink, hasAccessLink, usePendingAccessLink} from '../services/accessLink';
+import {PersonalAccessModal} from './PersonalAccessModal';
 
 type Session = {enabled: boolean; authenticated: boolean; remembered?: boolean; expiresAt?: number};
 type AccessResult = {success?: boolean; remembered?: boolean; expiresAt?: number};
@@ -16,6 +18,7 @@ export function AccessGate({children}: {children: React.ReactNode}) {
   const [busy, setBusy] = useState(false);
   const [remembering, setRemembering] = useState(false);
   const [error, setError] = useState('');
+  const [showLink,setShowLink] = useState(false);
   const checking = useRef<AbortController>();
   async function check() {
     checking.current?.abort(); const controller = new AbortController(); checking.current = controller;
@@ -23,14 +26,21 @@ export function AccessGate({children}: {children: React.ReactNode}) {
     try {
       const session = await appApi<Session>('/api/session', undefined, {signal: controller.signal});
       if (!controller.signal.aborted) {
+        if (session.enabled && !session.authenticated && hasAccessLink()) {
+          const result=await usePendingAccessLink();
+          if(controller.signal.aborted)return;
+          if(result.success!==true)throw new Error('Link unavailable');
+          setSessionInfo(result);setState('open');setNotice('Acesso pelo seu link. Em aparelho emprestado, use Sair ao terminar.');return;
+        }
+        if(session.authenticated)clearAccessLink();
         setSessionInfo(session);
         setState(!session.enabled ? 'preparing' : session.authenticated ? 'open' : 'locked');
       }
-    } catch { if (!controller.signal.aborted) {setState('error'); setError('Não foi possível verificar o acesso. Confira a conexão.');} }
+    } catch (cause) { if (!controller.signal.aborted) {setState('error'); setError(hasAccessLink() && cause instanceof Error ? cause.message : 'Não foi possível verificar o acesso. Confira a conexão.');} }
   }
   useEffect(() => {
     clearOperatorData(); void check();
-    const expired = () => {clearOperatorData(); setCode(''); setState('locked'); setError('Sua sessão terminou. Entre novamente.');};
+    const expired = () => {clearOperatorData(); setShowLink(false);setCode(''); setState('locked'); setError('Sua sessão terminou. Entre novamente.');};
     window.addEventListener('univer-session-expired', expired);
     return () => {checking.current?.abort(); window.removeEventListener('univer-session-expired', expired);};
   }, []);
@@ -40,6 +50,7 @@ export function AccessGate({children}: {children: React.ReactNode}) {
       const result = await appApi<AccessResult>('/api/session', {code, remember});
       if (result.success !== true) throw new Error('O acesso ainda está sendo preparado. Tente novamente mais tarde.');
       savePreference(remember); setSessionInfo(result); setNotice('');
+      clearAccessLink();
       clearOperatorData(); setCode(''); setState('open');
     } catch (cause) {setError(cause instanceof Error ? cause.message : 'Não foi possível entrar.');}
     finally {setBusy(false);}
@@ -57,7 +68,7 @@ export function AccessGate({children}: {children: React.ReactNode}) {
   }
   async function leave() {
     setBusy(true); setError('');
-    try { await appApi('/api/session', undefined, {method: 'DELETE'}); clearOperatorData(); savePreference(false); setRemember(false); setSessionInfo({}); setNotice(''); setState('locked'); }
+    try { await appApi('/api/session', undefined, {method: 'DELETE'}); clearOperatorData(); clearAccessLink();setShowLink(false);savePreference(false); setRemember(false); setSessionInfo({}); setNotice(''); setState('locked'); }
     catch {setError('Não foi possível encerrar a sessão. Tente novamente antes de devolver o aparelho.');}
     finally {setBusy(false);}
   }
@@ -65,6 +76,7 @@ export function AccessGate({children}: {children: React.ReactNode}) {
     <div className="operator-strip bg-neutral-900 text-white px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-xs">
       <span className="flex items-center gap-2"><ShieldCheck size={16}/>{sessionInfo.remembered && sessionInfo.expiresAt ? `Conectado até ${new Date(sessionInfo.expiresAt).toLocaleDateString('pt-BR')}` : 'Acesso de operador'}</span>
       <div className="flex flex-wrap items-center gap-2">
+      <button type="button" onClick={()=>setShowLink(true)} disabled={busy} className="flex items-center gap-2 rounded-lg bg-neutral-800 px-3 py-2 hover:bg-neutral-700 disabled:opacity-50"><Link2 size={16}/>Meu link</button>
       {!sessionInfo.remembered && <button type="button" onClick={rememberDevice} disabled={busy} className="rounded-lg border border-blue-500/50 px-3 py-2 text-blue-200 disabled:opacity-50">{remembering?'Salvando…':'Lembrar 7 dias'}</button>}
       <button type="button" onClick={leave} disabled={busy} className="flex items-center gap-2 rounded-lg px-3 py-2 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50"><LogOut size={16}/> {busy && !remembering ? 'Saindo…' : 'Sair deste aparelho'}</button>
       </div>
@@ -72,6 +84,7 @@ export function AccessGate({children}: {children: React.ReactNode}) {
     {notice && <p role="status" className="bg-blue-50 text-blue-900 dark:bg-blue-950 dark:text-blue-100 px-4 py-2 text-xs">{notice}</p>}
     {error && <p role="alert" className="bg-rose-50 text-rose-800 p-3 text-sm">{error}</p>}
     {children}
+    {showLink&&<PersonalAccessModal onClose={()=>setShowLink(false)}/>}
   </>;
   return <main className="access-page min-h-screen bg-neutral-950 text-neutral-100 flex items-center justify-center p-5">
     <section className="access-card w-full max-w-md rounded-3xl border border-neutral-800 bg-neutral-900 p-6 sm:p-8 shadow-2xl">
@@ -92,6 +105,7 @@ export function AccessGate({children}: {children: React.ReactNode}) {
       </form> : <>
         <p className="text-sm leading-relaxed text-neutral-400">{state === 'preparing' ? 'Estamos conectando o acesso seguro e o novo armazenamento. Nenhum arquivo antigo será alterado.' : error}</p>
         <button onClick={check} className="mt-6 w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold">Verificar novamente</button>
+        {state==='error'&&<button onClick={()=>{clearAccessLink();setError('');setState('locked');}} className="mt-3 w-full rounded-xl border border-neutral-700 px-4 py-3 text-sm">Entrar com o código</button>}
       </>}
     </section>
   </main>;

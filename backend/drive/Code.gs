@@ -63,6 +63,10 @@ function dispatch_(request) {
     case 'beginUpload': return beginUpload_(request);
     case 'publishUpload': return publishUpload_(request.id, request.confirmShare);
     case 'claimLoginAttempt': return claimLoginAttempt_();
+    case 'accessLinkStatus':
+    case 'createAccessLink':
+    case 'verifyAccessLink':
+    case 'revokeAccessLink': return accessLink_(request);
     case 'getText': return textContent_(request.id);
     case 'rename': return rename_(request.id, request.name);
     case 'trash': return trash_(request.id);
@@ -70,6 +74,38 @@ function dispatch_(request) {
     case 'retentionPreview': return retentionPreview_(request.days, request.pageToken);
     default: throw new Error('Unsupported action');
   }
+}
+
+/** Only signed control-plane requests; no raw link/token, file operation or new scope. */
+function accessLink_(request) {
+  if (typeof request.scope !== 'string' || !/^[a-f0-9]{64}$/.test(request.scope)) throw new Error('Invalid link scope');
+  if ((request.action === 'createAccessLink' || request.action === 'verifyAccessLink') &&
+      (typeof request.hash !== 'string' || !/^[a-f0-9]{64}$/.test(request.hash))) throw new Error('Invalid link hash');
+  var lock = LockService.getScriptLock();
+  lock.waitLock(5000);
+  try {
+    var properties = properties_();
+    var key = 'ACCESS_LINK_V1_' + request.scope;
+    var state = JSON.parse(properties.getProperty(key) || 'null');
+    // Corrupt persisted state fails closed instead of recreating access silently.
+    if (state && state.revoked !== true && (typeof state.hash !== 'string' || !/^[a-f0-9]{64}$/.test(state.hash) ||
+        !Number.isSafeInteger(state.expiresAt))) throw new Error('Invalid link state');
+    if (request.action === 'revokeAccessLink') {
+      properties.setProperty(key, JSON.stringify({revoked:true}));
+      return {revoked:true};
+    }
+    if (request.action === 'createAccessLink') {
+      state = {hash:request.hash, expiresAt:Date.now() + 90 * 86400000};
+      properties.setProperty(key, JSON.stringify(state));
+    }
+    var active = !!state && state.revoked !== true && state.expiresAt > Date.now();
+    if (request.action === 'verifyAccessLink' && active) {
+      var difference = 0;
+      for (var i = 0; i < 64; i++) difference |= state.hash.charCodeAt(i) ^ request.hash.charCodeAt(i);
+      active = difference === 0;
+    }
+    return active ? {active:true, expiresAt:state.expiresAt} : {active:false};
+  } finally { lock.releaseLock(); }
 }
 
 function driveRequest_(url, method, body, extraHeaders) {

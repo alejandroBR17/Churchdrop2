@@ -37,7 +37,7 @@ export function createMediaHandler({environment = process.env, drive = callDrive
   return async function handle(request) {
     const headers = new Headers();
     try {
-      await authorize(request, headers, {environment});
+      await authorize(request, headers, {environment, drive});
       if (request.method === 'GET') {
         const cursor = new URL(request.url).searchParams.get('cursor');
         if (cursor && cursor.length > 2000) throw new HttpError(400, 'Página inválida.');

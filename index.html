@@ -2,6 +2,16 @@
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
+    <meta name="referrer" content="no-referrer" />
+    <script>
+      (() => {
+        if (!location.hash.startsWith('#access=')) return;
+        let token = location.hash.slice(8);
+        if (!/^[a-f0-9]{64}$/.test(token)) token = '';
+        history.replaceState(history.state, '', location.pathname + location.search);
+        window.__univerTakeAccessLink = () => { const value = token; token = null; return value; };
+      })();
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     
     <script>
