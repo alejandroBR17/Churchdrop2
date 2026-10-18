@@ -69,4 +69,4 @@ A leitura da biblioteca faz no máximo uma nova tentativa após falha de transpo
 
 Esta importação prepara um ambiente para revisão; não representa auditoria completa. Testes automatizados devem interceptar APIs e sessões de upload ou usar origem isolada, preservando arquivos reais. Testes com respostas simuladas não confirmam CORS/Range, permissões ou download real do Google.
 
-Ainda serão revisados segurança das operações remotas, dependências, tratamento de falhas, dados offline, experiência em diferentes telas e documentação de operação. Não há licença definida pelo titular neste repositório nesta etapa.
+Os resultados, limites e próximos testes estão consolidados em [pendências para avaliação](docs/pendencias-validacao-2026-10-18.md). Permanecem sete alertas conhecidos de ferramentas na cadeia Tailwind 3, cuja migração exige revisão visual e de compatibilidade. Vídeos grandes, downloads no aparelho e transferência incompleta após recarga não foram validados ponta a ponta. Não há licença definida pelo titular neste repositório nesta etapa. Produção ainda não foi autorizada para esta revisão.
