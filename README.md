@@ -11,6 +11,8 @@ npm ci
 npm run dev
 ```
 
+Ferramentas de build fixadas em Vite 7.3.7 e plugin React 5.2.0. A atualização preserva a configuração e o alvo de navegador existentes. Migração conferida com os guias oficiais [Vite 5 → 6](https://v6.vite.dev/guide/migration.html) e [Vite 6 → 7](https://v7.vite.dev/guide/migration.html). Não use `npm audit fix --force`: os alertas restantes da cadeia Tailwind 3 exigem revisão própria antes de mudar o gerador de estilos.
+
 Para compilar: `npm run build`. A saída é `dist`.
 
 Verificações locais: `npm run typecheck` e `npm test`. Os testes de leitura usam respostas isoladas; não operam no Google Drive.
