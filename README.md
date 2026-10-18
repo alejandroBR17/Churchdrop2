@@ -57,6 +57,8 @@ Uma frase entre parênteses não é tratada como crédito por suposição. Conte
 
 ## Estado da revisão
 
+Em Enviar arquivos → Envios pendentes, arquivos que chegaram ao Drive mas ainda não foram disponibilizados podem ser recuperados após recarregar a página. A biblioteca consulta os metadados do servidor; não salva a sessão de upload nem credenciais no aparelho. O botão só é habilitado quando o tamanho recebido corresponde ao tamanho esperado e o operador confirma o compartilhamento por link. A publicação passa novamente pela verificação do backend. Falhas preservam o item para nova tentativa; nenhuma publicação ou exclusão é automática. Transferências incompletas ainda dependem da página original aberta: esta recuperação finaliza a publicação, não retoma bytes perdidos após recarga.
+
 A leitura da biblioteca faz no máximo uma nova tentativa após falha de transporte ou HTTP 502/503/504, aguardando meio segundo e mantendo o orçamento total de 20 segundos por página. Sair da sessão ou cancelar interrompe a espera. Autenticação, limitação de acesso, respostas inválidas e operações que alteram dados não são repetidas automaticamente. Uma página parcial nunca substitui a última biblioteca completa validada. Essa proteção reduz falhas transitórias; não determina a causa de uma indisponibilidade do Google.
 
 Esta importação prepara um ambiente para revisão; não representa auditoria completa. Testes automatizados devem interceptar APIs e sessões de upload ou usar origem isolada, preservando arquivos reais. Testes com respostas simuladas não confirmam CORS/Range, permissões ou download real do Google.

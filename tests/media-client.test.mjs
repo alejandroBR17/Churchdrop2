@@ -2,10 +2,53 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {appApi} from '../services/appApi.ts';
 import {fetchFilesFromScript, getCachedFiles, clearOperatorData, renameFileInScript,
-  deleteFileFromScript, uploadFileToScript, groupItemsByEvent} from '../services/churchService.ts';
+  deleteFileFromScript, uploadFileToScript, groupItemsByEvent, getPendingUploads, publishPendingUpload} from '../services/churchService.ts';
 
 const file = {id: 'isolated-file', name: 'Aviso.txt', mimeType: 'text/plain', date: '2026-10-17T12:00:00Z'};
 const json = (data, status = 200) => Response.json(data, {status});
+
+test('pending metadata survives pagination atomically without persisting upload capabilities', async () => {
+  let fail = false;
+  const pending = {id:'pending-complete',name:'Aviso.txt',complete:true};
+  await withFetch(async path => path.includes('cursor=')
+    ? json({files:fail ? [file, file] : [file],pendingUploads:[pending]})
+    : json({files:[],pendingUploads:[{...pending,id:'pending-incomplete',complete:false}],nextPageToken:'second'}), async () => {
+    await fetchFilesFromScript();
+    assert.equal(getPendingUploads().length,2);
+    const copy=getPendingUploads(); copy[0].name='Changed locally';
+    assert.equal(getPendingUploads()[0].name,'Aviso.txt');
+    fail=true; await assert.rejects(fetchFilesFromScript());
+    assert.equal(getPendingUploads().length,2); assert.equal(getCachedFiles().length,1);
+    clearOperatorData(); assert.equal(getPendingUploads().length,0);
+  });
+});
+
+test('recover publication sends no bytes, rejects incomplete files and keeps failed publication available', async () => {
+  let calls=0, fail=true;
+  await withFetch(async (_path,init) => {
+    if(init.method==='GET')return json({files:[],pendingUploads:[{id:file.id,name:file.name,complete:true},{id:'incomplete-file',name:'Outro',complete:false}]});
+    calls++; assert.deepEqual(JSON.parse(init.body),{action:'publishUpload',id:file.id,confirmShare:true});
+    return fail ? json({error:'Publication unavailable'},502) : json({file});
+  },async()=>{
+    await fetchFilesFromScript();
+    await assert.rejects(publishPendingUpload('incomplete-file')); assert.equal(calls,0);
+    await assert.rejects(publishPendingUpload(file.id),/Publication unavailable/); assert.equal(calls,1);
+    assert.equal(getPendingUploads().length,2); assert.equal(getCachedFiles().length,0);
+    fail=false; await publishPendingUpload(file.id); assert.equal(calls,2);
+    assert.equal(getPendingUploads().length,1); assert.equal(getCachedFiles()[0].id,file.id);
+  });
+});
+
+test('pending duplicate or malformed metadata cannot replace a valid snapshot', async () => {
+  let pending=[];
+  await withFetch(async()=>json({files:[file],pendingUploads:pending}),async()=>{
+    await fetchFilesFromScript();
+    for(const bad of [[{id:file.id,name:'Duplicate',complete:true}],[{id:'pending-file',name:'Bad',complete:'true'}]]) {
+      pending=bad; await assert.rejects(fetchFilesFromScript());
+      assert.equal(getCachedFiles().length,1); assert.equal(getPendingUploads().length,0);
+    }
+  });
+});
 
 test('library retries a transient gateway or transport failure once, keeping the same cursor', async () => {
   for (const failure of [() => new Response('Gateway unavailable', {status: 502}), () => {throw new TypeError('Failed to fetch');}]) {

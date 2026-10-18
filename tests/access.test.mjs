@@ -101,6 +101,16 @@ test('upload origin comes from the authenticated API URL, never from caller JSON
   assert.equal(operation.origin, 'https://app.example');
 });
 
+test('pending uploads expose only identity and verified completion, never private links or resumable sessions', async () => {
+  const base={id:'pending-file',name:'Aviso.mp4',mimeType:'video/mp4',size:'100',webContentLink:'private-link',sessionUrl:'private-session',appProperties:{sharing:'pending',expectedSize:'100'}};
+  for(const size of ['100','50',undefined]) {
+    const handler=createMediaHandler({environment,authorize:async()=>{},drive:async()=>({files:[{...base,size}]})});
+    const data=await(await handler(request('/api/media'))).json();
+    assert.deepEqual(data.pendingUploads,[{id:'pending-file',name:'Aviso.mp4',complete:size==='100'}]);
+    assert.deepEqual(data.files,[]);
+  }
+});
+
 test('media API prefers the official browser download link only for the same file and preserves resource keys', async () => {
   const base={id:'file-123',name:'Arquivo.txt',mimeType:'text/plain',size:'10',resourceKey:'isolated-resource',appProperties:{sharing:'link',uploadedAt:'2026-10-17T12:00:00Z'}};
   for(const provided of ['https://drive.usercontent.google.com/download?id=file-123&export=download&resourcekey=isolated-resource','https://attacker.example/uc?id=file-123&export=download','https://drive.google.com/uc?id=other-file&export=download']) {

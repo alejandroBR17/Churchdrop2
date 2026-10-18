@@ -2,8 +2,8 @@ import {useBodyScrollLock} from '../hooks/useBodyScrollLock';
 import React, { useState, useEffect, useRef } from 'react';
 import {X, Upload, FileText, Loader2} from 'lucide-react';
 import imageCompression from 'browser-image-compression';
-import type {UploadStatus} from '../services/churchService';
-import { getServiceName, uploadFileToScript } from '../services/churchService';
+import type {PendingUpload, UploadStatus} from '../services/churchService';
+import {getPendingUploads, publishPendingUpload, getServiceName, uploadFileToScript} from '../services/churchService';
 
 function formatBytes(value: number) {
   if (value < 1024) return `${value} B`;
@@ -36,10 +36,17 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   const [isDragOver, setIsDragOver] = useState(false);
   const [shareByLink, setShareByLink] = useState(false);
   const [uploadError, setUploadError] = useState('');
+  const [pendingUploads, setPendingUploads] = useState<PendingUpload[]>([]);
+  const [recoveryConsent, setRecoveryConsent] = useState(false);
+  const [recovering, setRecovering] = useState<string | null>(null);
+  const [recoveryError, setRecoveryError] = useState('');
   const request = useRef<AbortController>();
   const prepared = useRef(new WeakMap<File, File>());
   useEffect(() => () => request.current?.abort(), []);
   useEffect(() => {if (!isOpen) request.current?.abort();}, [isOpen]);
+  useEffect(() => {
+    if (isOpen) {setPendingUploads(getPendingUploads()); setRecoveryConsent(false); setRecoveryError('');}
+  }, [isOpen]);
 
 
   useEffect(() => {
@@ -74,7 +81,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   };
 
   const handleStartUpload = async () => {
-    if (isUploading) return;
+    if (isUploading || recovering) return;
     if (files.length === 0 || !shareByLink) {
       showToast('Selecione pelo menos um arquivo para enviar!', 'error');
       return;
@@ -139,6 +146,20 @@ export const UploadModal: React.FC<UploadModalProps> = ({
     }
   };
 
+  const recoverPublication = async (file: PendingUpload) => {
+    if (!recoveryConsent || recovering || isUploading) return;
+    const controller = new AbortController(); request.current = controller;
+    setRecovering(file.id); setRecoveryError('');
+    try {
+      await publishPendingUpload(file.id, controller.signal);
+      if (controller.signal.aborted) return;
+      setPendingUploads(getPendingUploads());
+      showToast('Arquivo disponível na biblioteca.', 'success'); onSuccess();
+    } catch (error) {
+      if (!controller.signal.aborted) setRecoveryError(error instanceof Error ? error.message : 'Não foi possível disponibilizar o arquivo.');
+    } finally {setRecovering(null);}
+  };
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-5 bg-black/60 backdrop-blur-sm">
       <section role="dialog" aria-modal="true" aria-labelledby="upload-title" className="workspace-dialog w-full max-w-lg max-h-[90dvh] flex flex-col overflow-hidden rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 shadow-2xl">
@@ -152,6 +173,20 @@ export const UploadModal: React.FC<UploadModalProps> = ({
 
         <div className="dialog-scroll min-h-0 overflow-y-auto p-5 space-y-4">
           {!isUploading && <>
+          {pendingUploads.length > 0 && <details className="rounded-2xl border border-blue-200 dark:border-blue-900 bg-blue-50/50 dark:bg-blue-950/20">
+            <summary className="cursor-pointer p-3 text-sm font-semibold">Envios pendentes <span className="text-blue-600 dark:text-blue-400">({pendingUploads.length})</span></summary>
+            <div className="p-3 pt-0 space-y-3">
+              <p className="text-xs leading-relaxed text-neutral-600 dark:text-neutral-300">Alguns arquivos chegaram ao Drive, mas ainda não estão na biblioteca. Não é preciso enviá-los novamente quando a transferência estiver completa.</p>
+              {pendingUploads.some(file => file.complete) && <label className="flex items-start gap-2 text-xs leading-relaxed"><input type="checkbox" checked={recoveryConsent} disabled={Boolean(recovering)} onChange={e=>setRecoveryConsent(e.target.checked)} className="mt-0.5 shrink-0"/><span>Confirmo que estes materiais podem ser abertos e repassados por quem receber o link.</span></label>}
+              <ul className="space-y-2">{pendingUploads.map(file => <li key={file.id} className="rounded-xl bg-white dark:bg-neutral-900 p-3 space-y-2">
+                <p className="break-words text-xs font-medium">{file.name}</p>
+                {file.complete ? <button type="button" disabled={!recoveryConsent || Boolean(recovering)} onClick={()=>recoverPublication(file)} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 text-white px-3 py-2 text-xs font-semibold disabled:opacity-40">{recovering === file.id && <Loader2 size={14} className="animate-spin"/>}{recovering === file.id ? 'Disponibilizando…' : 'Disponibilizar arquivo'}</button>
+                  : <p className="text-xs text-neutral-500">Transferência não confirmada. Se a página original ainda estiver aberta, retome o envio por ela.</p>}
+              </li>)}</ul>
+              {recoveryError && <p role="alert" className="rounded-xl bg-rose-50 dark:bg-rose-950/30 p-3 text-xs leading-relaxed text-rose-700 dark:text-rose-300">{recoveryError}</p>}
+              <p className="text-xs text-neutral-500">Nenhum arquivo é publicado ou apagado automaticamente.</p>
+            </div>
+          </details>}
           <label onDragOver={e=>{e.preventDefault(); if(!isUploading)setIsDragOver(true);}} onDragLeave={()=>setIsDragOver(false)} onDrop={handleDrop}
             className={`relative block cursor-pointer rounded-2xl border-2 border-dashed p-5 text-center focus-within:ring-2 focus-within:ring-blue-500 ${isDragOver ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30' : 'border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/30'}`}>
             <input type="file" multiple disabled={isUploading} onChange={handleFileChange} aria-label="Escolher arquivos" className="absolute inset-0 h-full w-full cursor-pointer opacity-0 disabled:cursor-not-allowed"/>
@@ -207,7 +242,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
 
         <footer className="flex items-center justify-end gap-2 border-t border-neutral-100 dark:border-neutral-800 p-4 shrink-0">
           <button type="button" onClick={()=>isUploading ? request.current?.abort() : onClose()} className="px-4 py-3 text-xs font-semibold text-neutral-600 dark:text-neutral-300">{isUploading ? 'Pausar' : 'Fechar'}</button>
-          <button type="button" onClick={handleStartUpload} disabled={isUploading || !files.length || !shareByLink} className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-500 px-5 py-3 text-xs font-bold text-white disabled:opacity-40 disabled:cursor-not-allowed">
+          <button type="button" onClick={handleStartUpload} disabled={isUploading || Boolean(recovering) || !files.length || !shareByLink} className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-500 px-5 py-3 text-xs font-bold text-white disabled:opacity-40 disabled:cursor-not-allowed">
             {isUploading ? <Loader2 size={16} className="animate-spin"/> : <Upload size={16}/>}
             {isUploading ? 'Enviando…' : uploadError ? 'Tentar novamente' : 'Enviar arquivos'}
           </button>

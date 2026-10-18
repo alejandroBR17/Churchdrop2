@@ -44,7 +44,11 @@ export function createMediaHandler({environment = process.env, drive = callDrive
         const result = await drive({action: 'list', ...(cursor ? {pageToken: cursor} : {})}, {environment, signal: request.signal});
         if (!Array.isArray(result.files)) throw new Error('Invalid list');
         return json({status: 'success', files: result.files.filter(file => file.appProperties?.sharing === 'link').map(fileDto),
-          pendingUploads: result.files.filter(file => file.appProperties?.sharing === 'pending').map(file => ({id: id(file.id), name: name(file.name)})),
+          pendingUploads: result.files.filter(file => file.appProperties?.sharing === 'pending').map(file => ({
+            id: id(file.id), name: name(file.name),
+            complete: Number.isSafeInteger(Number(file.appProperties.expectedSize)) && Number(file.appProperties.expectedSize) > 0 &&
+              String(file.size) === String(file.appProperties.expectedSize),
+          })),
           nextPageToken: result.nextPageToken || null}, 200, headers);
       }
       if (request.method !== 'POST') return json({error: 'Método não permitido.'}, 405, headers);

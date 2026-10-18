@@ -6,8 +6,19 @@ import type {MediaItem} from '../types.ts';
 
 // Only memory: borrowed devices must not retain the library after logout/reload.
 let snapshot: DriveFile[] = [];
+export interface PendingUpload {id: string; name: string; complete: boolean;}
+let pendingSnapshot: PendingUpload[] = [];
 let uploads = new WeakMap<File, {sessionUrl: string; id?: string}>();
-export function clearLibraryCache() { snapshot = []; }
+export function clearLibraryCache() { snapshot = []; pendingSnapshot = []; }
+export function getPendingUploads(): PendingUpload[] {return pendingSnapshot.map(file => ({...file}));}
+/** Recovery after reload uses only server metadata, never a persisted upload capability or owner token. */
+export async function publishPendingUpload(id: string, signal?: AbortSignal): Promise<void> {
+  if (!pendingSnapshot.some(file => file.id === id && file.complete)) throw new Error('Atualize a biblioteca para verificar este envio.');
+  const result = await appApi<{file: DriveFile}>('/api/media', {action: 'publishUpload', id, confirmShare: true}, {signal});
+  if (!readDriveFiles([result.file]) || result.file.id !== id) throw new Error('Não foi possível confirmar a publicação. Atualize a biblioteca.');
+  snapshot = [...snapshot.filter(file => file.id !== id), result.file];
+  pendingSnapshot = pendingSnapshot.filter(file => file.id !== id);
+}
 export function clearOperatorData() {
   clearLibraryCache(); uploads = new WeakMap();
   try { localStorage.removeItem('churchdrop_files_cache'); } catch { /* Storage may be unavailable. */ }
@@ -73,16 +84,25 @@ export async function uploadFileToScript(file: File, eventName = getServiceName(
   return {status: 'success', file: published.file};
 }
 export async function fetchFilesFromScript(signal?: AbortSignal): Promise<MediaItem[]> {
-  const all: DriveFile[] = [], cursors = new Set<string>();
+  const all: DriveFile[] = [], pending: PendingUpload[] = [], cursors = new Set<string>();
   let cursor: string | undefined;
   for (let page = 0; page < 100; page++) {
-    const result: {files: unknown; nextPageToken?: unknown} = await appApi('/api/media', undefined, {signal, cursor});
+    const result: {files: unknown; pendingUploads?: unknown; nextPageToken?: unknown} = await appApi('/api/media', undefined, {signal, cursor});
     const files = readDriveFiles(result.files);
     if (!files) throw new Error('A lista de arquivos retornada é inválida.');
+    const pendingPage = result.pendingUploads ?? [];
+    if (!Array.isArray(pendingPage) || pendingPage.some(file => !file || typeof file.id !== 'string' || !file.id ||
+        typeof file.name !== 'string' || typeof file.complete !== 'boolean')) throw new Error('A lista de envios pendentes é inválida.');
+    pending.push(...pendingPage);
     all.push(...files);
     if (!result.nextPageToken) {
       if (!readDriveFiles(all)) throw new Error('A lista contém arquivos duplicados. Atualize novamente.');
-      snapshot = all; return mapDriveFiles(all);
+      const ids = new Set(all.map(file => file.id));
+      for (const file of pending) {
+        if (ids.has(file.id)) throw new Error('A lista contém envios duplicados. Atualize novamente.');
+        ids.add(file.id);
+      }
+      snapshot = all; pendingSnapshot = pending; return mapDriveFiles(all);
     }
     if (typeof result.nextPageToken !== 'string' || result.nextPageToken.length > 2000 || cursors.has(result.nextPageToken)) break;
     cursor = result.nextPageToken; cursors.add(cursor);
