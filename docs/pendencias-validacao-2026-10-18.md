@@ -1,18 +1,20 @@
 # Univer Mídia — entrega para avaliação, 18/10/2026
 
-Prévia protegida vigente: https://univer-midia-cz3ozb4gr-alesobralcortes-9387s-projects.vercel.app/
+Prévia protegida vigente: https://univer-midia-p8skwd5jn-alesobralcortes-9387s-projects.vercel.app/
 
-Código implantado: 6702c0063d55d0d2dafb4d7cb3cd06e858c0581e. Projeto Vercel univer-midia, ambiente Preview, PR #1 draft. Produção, Churchdrop antigo e backend legado não foram substituídos. O código de operador permanece no guia privado; não deve entrar nesta documentação.
+Código implantado: 2069e891eebc1143b11bb297ebfbeb14c5cae4f9. Projeto Vercel univer-midia, ambiente Preview, PR #1 draft. Produção, Churchdrop antigo e backend legado não foram substituídos. O código de operador permanece no guia privado; não deve entrar nesta documentação.
 
 ## Entregue nesta revisão
 
 - Downloads separados sem abrir uma aba do Drive, fila pausável e ZIP opcional. O navegador/Google ainda pode pedir confirmação; o app conta solicitações, não finge comprovar salvamento.
+- Seleção por dia de envio, iniciando no mais recente e com biblioteca inteira somente por escolha explícita; troca de dia limpa seleção.
 - Formatador Holyrics local com revisão antes/depois e preservação de frases ambíguas. Não é IA semântica nem importação automática no Holyrics.
 - Redesign claro/escuro, rolagem móvel, modais e progresso baseado em bytes confirmados.
 - Recuperação limitada de falhas de leitura, sem repetir alterações automaticamente.
 - Recuperação da publicação de arquivos já transferidos após recarga, com consentimento explícito.
 - Revisão por 7/14 dias e preservação reversível por arquivo. Limpeza automática desligada.
-- Vite atualizado e 87 testes aprovados, além de tipos/build e ensaios de navegador com respostas isoladas.
+- Formatador simplificado por música, nome editável e cópia de nome/letra separados; opções e revisão recolhidas.
+- Vite atualizado e 92 testes aprovados, além de tipos/build e ensaios de navegador com respostas isoladas.
 
 ## Verificações que faltam no aparelho
 
