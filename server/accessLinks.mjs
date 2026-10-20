@@ -1,7 +1,7 @@
 import {createHmac, randomBytes} from 'node:crypto';
 import {HttpError} from './http.mjs';
 
-export const LINK_TTL_MS = 90 * 86400000;
+export const LINK_TTL_MS = 9 * 86400000;
 const tokenPattern = /^[a-f0-9]{64}$/;
 
 function scope(request, environment) {

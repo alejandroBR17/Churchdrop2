@@ -95,7 +95,7 @@ function accessLink_(request) {
       return {revoked:true};
     }
     if (request.action === 'createAccessLink') {
-      state = {hash:request.hash, expiresAt:Date.now() + 90 * 86400000};
+      state = {hash:request.hash, expiresAt:Date.now() + 9 * 86400000};
       properties.setProperty(key, JSON.stringify(state));
     }
     var active = !!state && state.revoked !== true && state.expiresAt > Date.now();

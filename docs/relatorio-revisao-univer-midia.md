@@ -318,3 +318,8 @@ Pedido humano aprovado após proposta de link próprio, validade 90 dias e cance
 103 testes totais aprovados, tipos/build aprovados. Seis novos testes integrados executam o código GAS isolado com assinaturas reais e propriedades simuladas: autenticação/CSRF/reconfirmação, duas instâncias, outra origem, reautenticação por código preservando o aparelho que gerencia o link, revogação de URL/cookie/API, substituição, limite de validade/lembrança, credenciais rotacionadas e falha fechada em indisponibilidade/corrupção. Nenhuma chamada a arquivos remotos. Navegador isolado em 320/390/768/1440 confirmou uma troca por montagem StrictMode, remoção do fragmento, ausência do token em storage/referrer/URL de rede, criação/cancelamento, foco restaurado, modal limitado à tela e recarga sem nova troca. Captura contém apenas chave fictícia conhecida.
 
 Fonte do Apps Script aberto foi comparada com o baseline Git e correspondia exatamente; cópia privada anterior preservada fora do Git. Nova fonte preparada/salva no editor, ainda sem publicar. Manifesto, escopos, propriedades existentes e arquivos não alterados. Falta ativação do backend/produção e teste real de registro sem operar arquivos.
+
+
+### Ativação confirmada em 19/10/2026 — prazo final de nove dias
+
+Confirmação humana explícita: publicar link pessoal de 9 dias. O prazo mais recente substitui a proposta anterior de 90 dias: servidor, Apps Script, interface, documentação e testes ajustados para nove dias. Sem pedir nova confirmação ou ampliar para 90 por suposição. Publicação no projeto univer-midia e domínio churchdrop2.vercel.app; escopos/permissões e materiais existentes preservados.

@@ -84,7 +84,7 @@ export function PersonalAccessModal({onClose}:{onClose:()=>void}) {
             <p className="text-xs leading-relaxed text-neutral-500 dark:text-neutral-400">Por segurança, ele só aparece agora. Se perder, crie outro; o anterior será cancelado.</p>
           </div>}
           <details open={!info.url} className="space-y-3 border-t border-neutral-200 pt-4 dark:border-neutral-800">
-            <summary className="cursor-pointer text-sm font-medium">{info.active?'Substituir ou cancelar o link':'Criar link válido por 90 dias'}</summary>
+            <summary className="cursor-pointer text-sm font-medium">{info.active?'Substituir ou cancelar o link':'Criar link válido por 9 dias'}</summary>
             <label className="block text-sm">Confirme seu código de acesso<input type="password" name="access-link-code" inputMode="numeric" autoComplete="off" value={code} maxLength={10} onChange={event=>setCode(event.target.value.replace(/\D/g,''))} className="mt-2 w-full rounded-xl border border-neutral-300 bg-white p-3 tracking-widest outline-none focus:ring-2 focus:ring-blue-500 dark:border-neutral-700 dark:bg-neutral-950"/></label>
             <label className="flex items-start gap-2 text-xs leading-relaxed text-neutral-500 dark:text-neutral-400"><input type="checkbox" checked={confirm} onChange={event=>setConfirm(event.target.checked)} className="mt-0.5"/>{info.active?'Entendo que isso cancela o link anterior e encerra as sessões abertas por ele.':'Entendo que qualquer pessoa com este link poderá acessar e gerenciar as mídias.'}</label>
             <div className="flex flex-wrap gap-2">
