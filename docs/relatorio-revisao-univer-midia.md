@@ -331,3 +331,10 @@ Teste real iniciou pela interface de produção: login por código, status sem l
 
 
 Após cancelar a chave de conferência, emitido o link pessoal definitivo pela interface real. Vencimento exibido em 28/10/2026; endereço guardado apenas em arquivo privado fora do Git e aberto ao responsável para cópia. Segredo não incluído no relatório, PR, screenshot ou saída de terminal. O modal foi fechado após preservar o link e reaberto somente com status, sem repetir a chave. PR #1 atualizada/draft, sem merge/main. Registro final documental local evita nova implantação redundante.
+
+
+### Correção humana posterior: 90 dias e emissão após vencimento
+
+Usuário esclareceu que 9 foi erro de digitação: validade desejada é 90 dias. Servidor, GAS, interface, README e testes corrigidos. Mantido o link pessoal entregue: manutenção assinada exclusiva exige mesmo hash/origem e converte somente registro legado ativo de nove dias, adicionando 81 dias uma única vez e marcando lifetimeDays=90. Não é endpoint público do navegador, renovação por posse do link, nem reativação de link vencido/cancelado. Sessões existentes toleram aumento autorizado do prazo do mesmo hash sem ultrapassar seu próprio TTL; troca/revogação continuam bloqueando pelo hash. Nenhum arquivo de mídia alterado.
+
+105 testes aprovados, tipos/build aprovados. Novos casos cobrem hash divergente sem alteração, mesma chave/cookie após correção, repetição idempotente sem extensão adicional, revogação sem ressurreição e entrada por código/criação de outro link depois de expirar. Navegador isolado em 390 confirmou link vencido→Entrar com o código→Meu link→Criar link válido por 90 dias. Fonte v4 preservada privadamente e nova fonte conferida no editor; falta publicar v5, interface e executar correção explícita do registro existente.

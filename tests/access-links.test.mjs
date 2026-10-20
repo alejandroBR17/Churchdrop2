@@ -54,7 +54,7 @@ test('creation requires a valid session, same origin and freshly verified operat
   assert.equal(h.calls.filter(c=>c.action==='createAccessLink').length,0);
   const link=await h.create(auth);
   assert.equal(link.token.length,64);assert.ok(!link.url.includes(code));
-  assert.equal(link.expiresAt,h.time()+9*86400000);
+  assert.equal(link.expiresAt,h.time()+90*86400000);
   assert.ok(!JSON.stringify([...h.properties]).includes(link.token));
   assert.ok(!JSON.stringify(h.calls).includes(link.token));
   const status=await(await h.handler(request({action:'linkStatus'},auth))).json();
@@ -95,7 +95,7 @@ test('replacing a link invalidates its sessions; new links are random and expire
   const second=await h.create(auth);assert.notEqual(second.token,first.token);
   assert.equal((await h.handler(request({action:'useLink',token:first.token,remember:false}))).status,401);
   assert.equal((await(await h.handler(request(undefined,linked,origin,'GET'))).json()).authenticated,false);
-  h.advance(9*86400000-3600000);
+  h.advance(90*86400000-3600000);
   const last=await h.handler(request({action:'useLink',token:second.token,remember:true}));
   assert.equal((await last.clone().json()).expiresAt,second.expiresAt);
   const remembered=await h.handler(request({action:'remember',remember:true},cookie(last)));
@@ -124,4 +124,30 @@ test('invalid secrets, rotated credentials and unavailable or corrupt registry f
   const key=[...h.properties.keys()].find(key=>key.startsWith('ACCESS_LINK_V1_'));
   h.properties.set(key,'malformed');
   assert.equal((await h.handler(request({action:'useLink',token:link.token,remember:false}))).status,502);
+});
+
+test('explicit legacy correction preserves the URL and cookie and cannot renew twice or resurrect revocation',async()=>{
+  const h=harness(),auth=await h.login(),link=await h.create(auth);
+  const key=[...h.properties.keys()].find(key=>key.startsWith('ACCESS_LINK_V1_'));
+  const legacy=JSON.parse(h.properties.get(key));delete legacy.lifetimeDays;legacy.expiresAt=h.time()+9*86400000;
+  h.properties.set(key,JSON.stringify(legacy));
+  const linked=cookie(await h.handler(request({action:'useLink',token:link.token,remember:false})));
+  const upgrade={action:'upgradeAccessLinkLifetime',scope:key.slice('ACCESS_LINK_V1_'.length),hash:legacy.hash};
+  assert.equal((await h.drive({...upgrade,hash:'a'.repeat(64)})).active,false);
+  assert.equal(JSON.parse(h.properties.get(key)).expiresAt,legacy.expiresAt);
+  const corrected=await h.drive(upgrade);assert.equal(corrected.expiresAt,h.time()+90*86400000);
+  assert.equal((await h.drive(upgrade)).expiresAt,corrected.expiresAt);
+  assert.equal((await(await h.handler(request(undefined,linked,origin,'GET'))).json()).authenticated,true);
+  assert.equal((await h.handler(request({action:'useLink',token:link.token,remember:false}))).status,200);
+  await h.handler(request({action:'revokeLink',code},auth));
+  assert.equal((await h.drive(upgrade)).active,false);
+});
+
+test('expired link never prevents code login and creation of a fresh ninety-day link',async()=>{
+  const h=harness(),auth=await h.login(),old=await h.create(auth);
+  h.advance(90*86400000+1);
+  assert.equal((await h.handler(request({action:'useLink',token:old.token,remember:false}))).status,401);
+  const freshAuth=await h.login(),fresh=await h.create(freshAuth);
+  assert.notEqual(fresh.token,old.token);assert.equal(fresh.expiresAt,h.time()+90*86400000);
+  assert.equal((await h.handler(request({action:'useLink',token:fresh.token,remember:false}))).status,200);
 });

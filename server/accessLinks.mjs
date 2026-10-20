@@ -1,7 +1,7 @@
 import {createHmac, randomBytes} from 'node:crypto';
 import {HttpError} from './http.mjs';
 
-export const LINK_TTL_MS = 9 * 86400000;
+export const LINK_TTL_MS = 90 * 86400000;
 const tokenPattern = /^[a-f0-9]{64}$/;
 
 function scope(request, environment) {
@@ -38,7 +38,9 @@ export async function verifyLinkedSession(request, session, options) {
   if (!session.linkHash) return;
   if (!tokenPattern.test(session.linkHash)) throw new HttpError(401, 'Entre novamente.');
   const result = await options.drive({action:'verifyAccessLink', scope:scope(request,options.environment), hash:session.linkHash}, {environment:options.environment, signal:request.signal});
-  if (result.active !== true || !Number.isSafeInteger(result.expiresAt) || result.expiresAt <= options.now() || result.expiresAt !== session.linkExpiresAt) throw new HttpError(401, 'Seu link venceu ou foi cancelado. Entre com o código.');
+  if (result.active !== true || !Number.isSafeInteger(result.expiresAt) || result.expiresAt <= options.now() ||
+      result.expiresAt > options.now() + LINK_TTL_MS + 60000 || !Number.isSafeInteger(session.linkExpiresAt) ||
+      result.expiresAt < session.linkExpiresAt) throw new HttpError(401, 'Seu link venceu ou foi cancelado. Entre com o código.');
 }
 
 export function linkedSessionHash(token, environment) { return digest(token, environment); }

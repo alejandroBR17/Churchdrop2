@@ -66,6 +66,7 @@ function dispatch_(request) {
     case 'accessLinkStatus':
     case 'createAccessLink':
     case 'verifyAccessLink':
+    case 'upgradeAccessLinkLifetime':
     case 'revokeAccessLink': return accessLink_(request);
     case 'getText': return textContent_(request.id);
     case 'rename': return rename_(request.id, request.name);
@@ -79,7 +80,7 @@ function dispatch_(request) {
 /** Only signed control-plane requests; no raw link/token, file operation or new scope. */
 function accessLink_(request) {
   if (typeof request.scope !== 'string' || !/^[a-f0-9]{64}$/.test(request.scope)) throw new Error('Invalid link scope');
-  if ((request.action === 'createAccessLink' || request.action === 'verifyAccessLink') &&
+  if ((request.action === 'createAccessLink' || request.action === 'verifyAccessLink' || request.action === 'upgradeAccessLinkLifetime') &&
       (typeof request.hash !== 'string' || !/^[a-f0-9]{64}$/.test(request.hash))) throw new Error('Invalid link hash');
   var lock = LockService.getScriptLock();
   lock.waitLock(5000);
@@ -95,14 +96,21 @@ function accessLink_(request) {
       return {revoked:true};
     }
     if (request.action === 'createAccessLink') {
-      state = {hash:request.hash, expiresAt:Date.now() + 9 * 86400000};
+      state = {hash:request.hash, expiresAt:Date.now() + 90 * 86400000, lifetimeDays:90};
       properties.setProperty(key, JSON.stringify(state));
     }
     var active = !!state && state.revoked !== true && state.expiresAt > Date.now();
-    if (request.action === 'verifyAccessLink' && active) {
+    if ((request.action === 'verifyAccessLink' || request.action === 'upgradeAccessLinkLifetime') && active) {
       var difference = 0;
       for (var i = 0; i < 64; i++) difference |= state.hash.charCodeAt(i) ^ request.hash.charCodeAt(i);
       active = difference === 0;
+    }
+    // Explicit signed maintenance for the v4 nine-day link. No new token and
+    // no repeated renewal: new links and migrated records carry the marker.
+    if (request.action === 'upgradeAccessLinkLifetime' && active && state.lifetimeDays === undefined) {
+      state.expiresAt += 81 * 86400000;
+      state.lifetimeDays = 90;
+      properties.setProperty(key, JSON.stringify(state));
     }
     return active ? {active:true, expiresAt:state.expiresAt} : {active:false};
   } finally { lock.releaseLock(); }
