@@ -1,10 +1,14 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  X, Upload, Image as ImageIcon, Video, FileText, Music, Sparkles, 
-  Check, AlertCircle, File, Loader2, Calendar, Tag
-} from 'lucide-react';
+import {useBodyScrollLock} from '../hooks/useBodyScrollLock';
+import React, { useState, useEffect, useRef } from 'react';
+import {X, Upload, FileText, Loader2} from 'lucide-react';
 import imageCompression from 'browser-image-compression';
-import { getServiceName, getAlternativeNames, uploadFileToScript } from '../services/churchService';
+import type {PendingUpload, UploadStatus} from '../services/churchService';
+import {getPendingUploads, publishPendingUpload, getServiceName, uploadFileToScript} from '../services/churchService';
+
+function formatBytes(value: number) {
+  if (value < 1024) return `${value} B`;
+  return `${(value / (value < 1048576 ? 1024 : 1048576)).toLocaleString('pt-BR', {maximumFractionDigits: 1})} ${value < 1048576 ? 'KB' : 'MB'}`;
+}
 
 interface UploadModalProps {
   isOpen: boolean;
@@ -19,18 +23,31 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   onSuccess,
   showToast
 }) => {
-  if (!isOpen) return null;
-
   const [files, setFiles] = useState<File[]>([]);
-  const [uploadDate, setUploadDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [eventName, setEventName] = useState<string>('');
+  const [uploadDate, setUploadDate] = useState(() => {const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;});
+  const [eventName, setEventName] = useState(getServiceName);
   const [isCustomEvent, setIsCustomEvent] = useState(false);
   const [compressImages, setCompressImages] = useState(true);
   
   const [isUploading, setIsUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
+  const [transfer, setTransfer] = useState<UploadStatus | null>(null);
+  const [fileNumber, setFileNumber] = useState({current: 0, total: 0});
   const [currentFileName, setCurrentFileName] = useState('');
   const [isDragOver, setIsDragOver] = useState(false);
+  const [shareByLink, setShareByLink] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const [pendingUploads, setPendingUploads] = useState<PendingUpload[]>([]);
+  const [recoveryConsent, setRecoveryConsent] = useState(false);
+  const [recovering, setRecovering] = useState<string | null>(null);
+  const [recoveryError, setRecoveryError] = useState('');
+  const request = useRef<AbortController>();
+  const prepared = useRef(new WeakMap<File, File>());
+  useEffect(() => () => request.current?.abort(), []);
+  useEffect(() => {if (!isOpen) request.current?.abort();}, [isOpen]);
+  useEffect(() => {
+    if (isOpen) {setPendingUploads(getPendingUploads()); setRecoveryConsent(false); setRecoveryError('');}
+  }, [isOpen]);
+
 
   useEffect(() => {
     if (!isCustomEvent) {
@@ -38,21 +55,11 @@ export const UploadModal: React.FC<UploadModalProps> = ({
       setEventName(getServiceName(dateObj));
     }
   }, [uploadDate, isCustomEvent]);
-
-  const presetEvents = [
-    "Prosperidade com Deus",
-    "Corrente dos 70",
-    "Escola da Fé Inteligente",
-    "Terapia do Amor",
-    "Sessão do Descarrego",
-    "Jejum das Causas Impossíveis",
-    "Encontro com Deus",
-    "Reunião de Obreiros",
-    "EBD / Escola Bíblica",
-    "Culto de Jovens (FJU)"
-  ];
+  useBodyScrollLock(isOpen);
+  if (!isOpen) return null;
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (isUploading) return;
     if (e.target.files) {
       const selected = Array.from(e.target.files);
       setFiles(prev => [...prev, ...selected]);
@@ -61,6 +68,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
+    if (isUploading) return;
     setIsDragOver(false);
     if (e.dataTransfer.files) {
       const dropped = Array.from(e.dataTransfer.files);
@@ -73,287 +81,173 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   };
 
   const handleStartUpload = async () => {
-    if (files.length === 0) {
+    if (isUploading || recovering) return;
+    if (files.length === 0 || !shareByLink) {
       showToast('Selecione pelo menos um arquivo para enviar!', 'error');
       return;
     }
 
     setIsUploading(true);
-    setUploadProgress(0);
+    setTransfer(null);
+    setUploadError('');
+    const controller = new AbortController(); request.current = controller;
+    const batch = [...files];
+    const remaining = new Set(batch);
 
     let successCount = 0;
-    let failCount = 0;
-
-    for (let i = 0; i < files.length; i++) {
-      let fileToUpload = files[i];
+    for (let i = 0; i < batch.length; i++) {
+      if (controller.signal.aborted) break;
+      let fileToUpload = prepared.current.get(batch[i]) || batch[i];
       setCurrentFileName(fileToUpload.name);
+      setFileNumber({current: i + 1, total: batch.length});
+      setTransfer(null);
 
       // Compress images if enabled and file is an image > 1MB
-      if (compressImages && fileToUpload.type.startsWith('image/') && fileToUpload.size > 1024 * 1024) {
+      if (!prepared.current.has(batch[i]) && compressImages && fileToUpload.type.startsWith('image/') && fileToUpload.size > 1024 * 1024) {
         try {
           const options = {
             maxSizeMB: 2,
             maxWidthOrHeight: 1920,
-            useWebWorker: true
+            useWebWorker: true,
+            signal: controller.signal
           };
-          fileToUpload = await imageCompression(fileToUpload, options);
+          const compressed = await imageCompression(fileToUpload, options);
+          fileToUpload = new window.File([compressed], batch[i].name, {type: compressed.type, lastModified: batch[i].lastModified});
         } catch (err) {
-          console.warn('Compressão ignorada:', err);
+          if (controller.signal.aborted) break;
         }
       }
+      prepared.current.set(batch[i], fileToUpload);
 
       try {
         await uploadFileToScript(
           fileToUpload,
           eventName,
-          (pct) => {
-            const overallPct = Math.floor(((i + (pct / 100)) / files.length) * 100);
-            setUploadProgress(overallPct);
-          }
+          undefined,
+          {signal: controller.signal, shareByLink, onStatus: setTransfer}
         );
         successCount++;
+        remaining.delete(batch[i]);
       } catch (err) {
-        console.error('Erro no upload:', err);
-        failCount++;
+        if (!controller.signal.aborted) setUploadError(err instanceof Error ? err.message : 'Falha no envio.');
+        break; // Keep this and later files for retry; do not silently discard partial failures.
       }
     }
 
     setIsUploading(false);
+    setFiles([...remaining]);
 
     if (successCount > 0) {
       showToast(`${successCount} arquivo(s) enviado(s) com sucesso!`, 'success');
       onSuccess();
-      onClose();
-      setFiles([]);
+      if (remaining.size === 0) {setShareByLink(false); onClose();}
     } else {
-      showToast('Falha ao enviar arquivo(s). Verifique sua conexão.', 'error');
+      showToast(controller.signal.aborted ? 'Envio pausado. Tente novamente mantendo esta página aberta.' : 'O envio não terminou. Os arquivos continuam na lista.', 'info');
     }
   };
 
+  const recoverPublication = async (file: PendingUpload) => {
+    if (!recoveryConsent || recovering || isUploading) return;
+    const controller = new AbortController(); request.current = controller;
+    setRecovering(file.id); setRecoveryError('');
+    try {
+      await publishPendingUpload(file.id, controller.signal);
+      if (controller.signal.aborted) return;
+      setPendingUploads(getPendingUploads());
+      showToast('Arquivo disponível na biblioteca.', 'success'); onSuccess();
+    } catch (error) {
+      if (!controller.signal.aborted) setRecoveryError(error instanceof Error ? error.message : 'Não foi possível disponibilizar o arquivo.');
+    } finally {setRecovering(null);}
+  };
+
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative w-full max-w-lg bg-white dark:bg-neutral-900 rounded-3xl shadow-2xl border border-neutral-200/80 dark:border-neutral-800/80 overflow-hidden flex flex-col max-h-[90vh]">
-        
-        {/* Modal Header */}
-        <div className="p-5 border-b border-neutral-100 dark:border-neutral-800/80 flex items-center justify-between bg-neutral-50/50 dark:bg-neutral-900/50">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-univer-blue/10 text-univer-blue flex items-center justify-center font-bold">
-              <Upload size={20} />
-            </div>
-            <div>
-              <h2 className="text-base font-bold text-neutral-900 dark:text-white">Enviar Nova Mídia</h2>
-              <p className="text-xs text-neutral-500">Transfira fotos, vídeos e textos para a técnica</p>
-            </div>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-5 bg-black/60 backdrop-blur-sm">
+      <section role="dialog" aria-modal="true" aria-labelledby="upload-title" className="workspace-dialog w-full max-w-lg max-h-[90dvh] flex flex-col overflow-hidden rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 shadow-2xl">
+        <header className="flex items-center justify-between gap-3 p-5 border-b border-neutral-100 dark:border-neutral-800 shrink-0">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400"><Upload size={20}/></span>
+            <div><h2 id="upload-title" className="font-bold text-base">Enviar arquivos</h2><p className="mt-0.5 text-xs text-neutral-500">Escolha o material para a biblioteca.</p></div>
           </div>
-          <button 
-            onClick={onClose} 
-            disabled={isUploading}
-            className="p-2 text-neutral-400 hover:text-neutral-700 dark:hover:text-white rounded-xl transition-colors disabled:opacity-50"
-          >
-            <X size={20} />
-          </button>
-        </div>
+          <button type="button" aria-label="Fechar envio" onClick={onClose} disabled={isUploading} className="p-2 rounded-xl text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-40"><X size={20}/></button>
+        </header>
 
-        {/* Modal Body */}
-        <div className="p-6 overflow-y-auto space-y-5 custom-scrollbar">
-          
-          {/* Date & Event Tag Section */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-1.5 flex items-center gap-1">
-                <Calendar size={13} /> Data do Culto
+        <div className="dialog-scroll min-h-0 overflow-y-auto p-5 space-y-4">
+          {!isUploading && <>
+          {pendingUploads.length > 0 && <details className="rounded-2xl border border-blue-200 dark:border-blue-900 bg-blue-50/50 dark:bg-blue-950/20">
+            <summary className="cursor-pointer p-3 text-sm font-semibold">Envios pendentes <span className="text-blue-600 dark:text-blue-400">({pendingUploads.length})</span></summary>
+            <div className="p-3 pt-0 space-y-3">
+              <p className="text-xs leading-relaxed text-neutral-600 dark:text-neutral-300">Alguns arquivos chegaram ao Drive, mas ainda não estão na biblioteca. Não é preciso enviá-los novamente quando a transferência estiver completa.</p>
+              {pendingUploads.some(file => file.complete) && <label className="flex items-start gap-2 text-xs leading-relaxed"><input type="checkbox" checked={recoveryConsent} disabled={Boolean(recovering)} onChange={e=>setRecoveryConsent(e.target.checked)} className="mt-0.5 shrink-0"/><span>Confirmo que estes materiais podem ser abertos e repassados por quem receber o link.</span></label>}
+              <ul className="space-y-2">{pendingUploads.map(file => <li key={file.id} className="rounded-xl bg-white dark:bg-neutral-900 p-3 space-y-2">
+                <p className="break-words text-xs font-medium">{file.name}</p>
+                {file.complete ? <button type="button" disabled={!recoveryConsent || Boolean(recovering)} onClick={()=>recoverPublication(file)} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 text-white px-3 py-2 text-xs font-semibold disabled:opacity-40">{recovering === file.id && <Loader2 size={14} className="animate-spin"/>}{recovering === file.id ? 'Disponibilizando…' : 'Disponibilizar arquivo'}</button>
+                  : <p className="text-xs text-neutral-500">Transferência não confirmada. Se a página original ainda estiver aberta, retome o envio por ela.</p>}
+              </li>)}</ul>
+              {recoveryError && <p role="alert" className="rounded-xl bg-rose-50 dark:bg-rose-950/30 p-3 text-xs leading-relaxed text-rose-700 dark:text-rose-300">{recoveryError}</p>}
+              <p className="text-xs text-neutral-500">Nenhum arquivo é publicado ou apagado automaticamente.</p>
+            </div>
+          </details>}
+          <label onDragOver={e=>{e.preventDefault(); if(!isUploading)setIsDragOver(true);}} onDragLeave={()=>setIsDragOver(false)} onDrop={handleDrop}
+            className={`relative block cursor-pointer rounded-2xl border-2 border-dashed p-5 text-center focus-within:ring-2 focus-within:ring-blue-500 ${isDragOver ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30' : 'border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/30'}`}>
+            <input type="file" multiple disabled={isUploading} onChange={handleFileChange} aria-label="Escolher arquivos" className="absolute inset-0 h-full w-full cursor-pointer opacity-0 disabled:cursor-not-allowed"/>
+            <Upload size={24} className="mx-auto text-blue-500 mb-2"/>
+            <span className="block text-sm font-semibold">Escolher arquivos</span>
+            <span className="block mt-1 text-xs text-neutral-500">Fotos, vídeos, áudios ou documentos</span>
+          </label>
+
+          {files.length > 0 && <section aria-label="Arquivos selecionados" className="space-y-2">
+            <div className="flex items-center justify-between gap-2 text-xs text-neutral-500"><span>{files.length} selecionado(s)</span><button type="button" disabled={isUploading} onClick={()=>setFiles([])} className="text-blue-600 dark:text-blue-400 disabled:opacity-40">Limpar lista</button></div>
+            <ul className="space-y-2">
+              {files.map((file,index)=><li key={index} className="flex items-center gap-2 p-3 rounded-xl bg-neutral-100 dark:bg-neutral-800">
+                <FileText size={17} className="shrink-0 text-blue-500"/>
+                <span className="min-w-0 flex-1 truncate text-xs font-medium" title={file.name}>{file.name}</span>
+                <span className="shrink-0 text-[11px] text-neutral-500">{file.size < 1048576 ? `${Math.ceil(file.size/1024)} KB` : `${(file.size/1048576).toFixed(1)} MB`}</span>
+                <button type="button" aria-label={`Remover ${file.name}`} disabled={isUploading} onClick={()=>removeFile(index)} className="p-1 text-neutral-500 disabled:opacity-40"><X size={15}/></button>
+              </li>)}
+            </ul>
+          </section>}
+
+          <details className="rounded-2xl border border-neutral-200 dark:border-neutral-800">
+            <summary className="cursor-pointer p-3 text-xs font-medium text-neutral-600 dark:text-neutral-300">Opções de envio <span className="font-normal text-neutral-400">(opcional)</span></summary>
+            <fieldset disabled={isUploading} className="border-t border-neutral-100 dark:border-neutral-800 p-3 space-y-3">
+              <label className="block text-xs font-medium">Data
+                <input type="date" value={uploadDate} onChange={e=>setUploadDate(e.target.value)} className="mt-1.5 block w-full min-w-0 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 px-3 py-2.5 text-sm"/>
               </label>
-              <input 
-                type="date" 
-                value={uploadDate} 
-                onChange={(e) => setUploadDate(e.target.value)}
-                className="w-full border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800 dark:text-white rounded-xl px-3 py-2 text-xs font-semibold focus:ring-2 focus:ring-univer-blue outline-none transition-all"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-1.5 flex items-center gap-1">
-                <Tag size={13} /> Nome do Evento
+              <label className="block text-xs font-medium">Evento ou pasta
+                <input type="text" maxLength={100} value={eventName} onChange={e=>{setEventName(e.target.value);setIsCustomEvent(true);}} className="mt-1.5 block w-full min-w-0 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 px-3 py-2.5 text-sm"/>
               </label>
-              <input 
-                type="text" 
-                value={eventName} 
-                onChange={(e) => {
-                  setEventName(e.target.value);
-                  setIsCustomEvent(true);
-                }}
-                placeholder="Ex: Reunião de Obreiros"
-                className="w-full border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800 dark:text-white rounded-xl px-3 py-2 text-xs font-semibold focus:ring-2 focus:ring-univer-blue outline-none transition-all"
-              />
-            </div>
-          </div>
+              <label className="flex items-start gap-2 text-xs text-neutral-600 dark:text-neutral-300"><input type="checkbox" checked={compressImages} onChange={e=>setCompressImages(e.target.checked)} className="mt-0.5"/><span>Reduzir fotos grandes antes de enviar</span></label>
+            </fieldset>
+          </details>
 
-          {/* Preset Badges */}
-          <div>
-            <span className="text-[11px] font-bold text-neutral-400 dark:text-neutral-500 uppercase tracking-wider block mb-2">
-              Atalhos de Cultos:
-            </span>
-            <div className="flex flex-wrap gap-1.5">
-              {presetEvents.map(preset => (
-                <button
-                  key={preset}
-                  onClick={() => {
-                    const dateObj = new Date(uploadDate + 'T12:00:00');
-                    const dateStr = dateObj.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-                    setEventName(`${preset} - ${dateStr}`);
-                    setIsCustomEvent(true);
-                  }}
-                  className="text-[11px] bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 font-medium px-2.5 py-1 rounded-lg transition-colors border border-neutral-200/60 dark:border-neutral-700/60"
-                >
-                  {preset}
-                </button>
-              ))}
-            </div>
-          </div>
+          <label className="flex items-start gap-3 text-xs leading-relaxed text-neutral-600 dark:text-neutral-300">
+            <input type="checkbox" checked={shareByLink} disabled={isUploading} onChange={e=>setShareByLink(e.target.checked)} className="mt-0.5 shrink-0"/>
+            <span>Estes arquivos podem ser abertos e repassados por quem receber o link.</span>
+          </label>
 
-          {/* Drag & Drop Zone */}
-          <div 
-            onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
-            onDragLeave={() => setIsDragOver(false)}
-            onDrop={handleDrop}
-            className={`border-2 border-dashed rounded-2xl p-6 text-center transition-all cursor-pointer relative ${
-              isDragOver 
-                ? 'border-univer-blue bg-blue-50/50 dark:bg-blue-950/20' 
-                : 'border-neutral-200 dark:border-neutral-800 hover:border-neutral-400 dark:hover:border-neutral-700 bg-neutral-50/50 dark:bg-neutral-900/50'
-            }`}
-          >
-            <input 
-              type="file" 
-              multiple 
-              onChange={handleFileChange}
-              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-            />
-            <div className="w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-950/60 text-univer-blue flex items-center justify-center mx-auto mb-3">
-              <Upload size={24} />
-            </div>
-            <h3 className="text-sm font-bold text-neutral-800 dark:text-neutral-200 mb-1">
-              Arraste seus arquivos para cá ou <span className="text-univer-blue underline">clique aqui</span>
-            </h3>
-            <p className="text-xs text-neutral-400">
-              Suporta Fotos, Vídeos, Músicas, PDFs e Anotações de Texto
-            </p>
-          </div>
-
-          {/* Compress images toggle option */}
-          <div className="flex items-center justify-between p-3 bg-neutral-50 dark:bg-neutral-800/60 rounded-xl border border-neutral-200/60 dark:border-neutral-800/60">
-            <div className="flex items-center gap-2">
-              <Sparkles size={16} className="text-amber-500" />
-              <div>
-                <span className="block text-xs font-bold text-neutral-800 dark:text-neutral-200">
-                  Otimizar Imagens Automaticamente
-                </span>
-                <span className="block text-[10px] text-neutral-400">
-                  Reduz o tamanho de fotos grandes para envio instantâneo
-                </span>
-              </div>
-            </div>
-            <input 
-              type="checkbox" 
-              checked={compressImages}
-              onChange={(e) => setCompressImages(e.target.checked)}
-              className="w-4 h-4 text-univer-blue rounded border-neutral-300 focus:ring-univer-blue cursor-pointer"
-            />
-          </div>
-
-          {/* Selected Files Queue List */}
-          {files.length > 0 && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-xs font-bold text-neutral-500">
-                <span>Arquivos Selecionados ({files.length})</span>
-                <button 
-                  onClick={() => setFiles([])}
-                  className="text-rose-500 hover:underline text-[11px]"
-                >
-                  Remover Todos
-                </button>
-              </div>
-              <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
-                {files.map((file, idx) => (
-                  <div 
-                    key={idx}
-                    className="flex items-center justify-between p-2.5 bg-neutral-100 dark:bg-neutral-800/80 rounded-xl text-xs"
-                  >
-                    <div className="flex items-center gap-2 truncate">
-                      {file.type.startsWith('image/') && <ImageIcon size={15} className="text-blue-500 shrink-0" />}
-                      {file.type.startsWith('video/') && <Video size={15} className="text-amber-500 shrink-0" />}
-                      {file.type.startsWith('audio/') && <Music size={15} className="text-purple-500 shrink-0" />}
-                      {!file.type.startsWith('image/') && !file.type.startsWith('video/') && !file.type.startsWith('audio/') && (
-                        <FileText size={15} className="text-rose-500 shrink-0" />
-                      )}
-                      <span className="truncate font-medium text-neutral-800 dark:text-neutral-200">{file.name}</span>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-[10px] text-neutral-400 font-mono">
-                        {(file.size / (1024 * 1024)).toFixed(1)} MB
-                      </span>
-                      <button 
-                        onClick={() => removeFile(idx)}
-                        className="text-neutral-400 hover:text-rose-500 p-1"
-                      >
-                        <X size={14} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Upload Progress Bar */}
-          {isUploading && (
-            <div className="space-y-2 p-3 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/50 rounded-2xl">
-              <div className="flex items-center justify-between text-xs font-bold text-blue-700 dark:text-blue-300">
-                <span className="flex items-center gap-2">
-                  <Loader2 size={14} className="animate-spin" />
-                  <span>Enviando {currentFileName}...</span>
-                </span>
-                <span>{uploadProgress}%</span>
-              </div>
-              <div className="w-full h-2 bg-blue-200 dark:bg-blue-900/60 rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-univer-blue transition-all duration-300 rounded-full"
-                  style={{ width: `${uploadProgress}%` }}
-                />
-              </div>
-            </div>
-          )}
-
+          </>}
+          {isUploading && <div role="status" className="upload-status rounded-2xl p-4 space-y-3">
+            <div className="flex items-center justify-between gap-2 text-xs font-semibold"><span>Arquivo {fileNumber.current} de {fileNumber.total}</span><Loader2 size={16} className="animate-spin text-blue-500"/></div>
+            <p className="truncate text-sm font-semibold" title={currentFileName}>{currentFileName}</p>
+            <p className="text-xs text-neutral-500 dark:text-neutral-400">{!transfer ? 'Preparando o arquivo…' : transfer.phase === 'opening' ? 'Conectando ao Drive…' : transfer.phase === 'publishing' ? 'Transferência concluída. Disponibilizando o link…' : transfer.phase === 'complete' ? 'Arquivo disponível na biblioteca.' : 'Transferindo para o Drive'}</p>
+            {transfer?.phase === 'transferring' && <>
+              <div className="flex justify-between gap-2 text-xs tabular-nums"><span>{formatBytes(transfer.confirmedBytes)} de {formatBytes(transfer.totalBytes)}</span><strong>{Math.floor(transfer.confirmedBytes / transfer.totalBytes * 100)}%</strong></div>
+              <div role="progressbar" aria-label="Bytes confirmados pelo Drive" aria-valuemin={0} aria-valuemax={transfer.totalBytes} aria-valuenow={transfer.confirmedBytes} aria-valuetext={`${formatBytes(transfer.confirmedBytes)} de ${formatBytes(transfer.totalBytes)} confirmados`} className="h-2 rounded-full bg-blue-100 dark:bg-blue-950 overflow-hidden"><div className="h-full rounded-full bg-blue-600 transition-[width]" style={{width:`${transfer.confirmedBytes / transfer.totalBytes * 100}%`}}/></div>
+              <p className="text-[11px] text-neutral-500 dark:text-neutral-400">Confirmado pelo Drive. Atualiza a cada bloco de até 4 MB; arquivos pequenos podem concluir de uma vez.</p>
+            </>}
+            <p className="text-[11px] text-neutral-500 dark:text-neutral-400">Mantenha esta página aberta durante o envio.</p>
+          </div>}
+          {uploadError && <p role="alert" className="rounded-xl bg-rose-50 dark:bg-rose-950/30 p-3 text-xs leading-relaxed text-rose-700 dark:text-rose-300">{uploadError}</p>}
         </div>
 
-        {/* Modal Footer CTA */}
-        <div className="p-4 border-t border-neutral-100 dark:border-neutral-800/80 bg-neutral-50/50 dark:bg-neutral-900/50 flex items-center justify-end gap-2">
-          <button 
-            onClick={onClose}
-            disabled={isUploading}
-            className="px-4 py-2.5 rounded-xl text-xs font-bold text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors disabled:opacity-50"
-          >
-            Cancelar
+        <footer className="flex items-center justify-end gap-2 border-t border-neutral-100 dark:border-neutral-800 p-4 shrink-0">
+          <button type="button" onClick={()=>isUploading ? request.current?.abort() : onClose()} className="px-4 py-3 text-xs font-semibold text-neutral-600 dark:text-neutral-300">{isUploading ? 'Pausar' : 'Fechar'}</button>
+          <button type="button" onClick={handleStartUpload} disabled={isUploading || Boolean(recovering) || !files.length || !shareByLink} className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-500 px-5 py-3 text-xs font-bold text-white disabled:opacity-40 disabled:cursor-not-allowed">
+            {isUploading ? <Loader2 size={16} className="animate-spin"/> : <Upload size={16}/>}
+            {isUploading ? 'Enviando…' : uploadError ? 'Tentar novamente' : 'Enviar arquivos'}
           </button>
-          <button 
-            onClick={handleStartUpload}
-            disabled={isUploading || files.length === 0}
-            className="flex items-center gap-2 bg-univer-blue hover:bg-blue-600 text-white font-bold text-xs px-6 py-2.5 rounded-xl transition-all shadow-md shadow-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isUploading ? (
-              <>
-                <Loader2 size={16} className="animate-spin" />
-                <span>Enviando...</span>
-              </>
-            ) : (
-              <>
-                <Upload size={16} />
-                <span>Iniciar Envio</span>
-              </>
-            )}
-          </button>
-        </div>
-
-      </div>
+        </footer>
+      </section>
     </div>
   );
 };

@@ -15,6 +15,7 @@ export default {
         sans: ['Inter', 'sans-serif'],
       },
       colors: {
+        neutral: {50:'#f5f7fb',100:'#edf1f7',200:'#dce3ed',300:'#bdc8d8',400:'#8795aa',500:'#65758c',600:'#4d5c73',700:'#34435a',800:'#243247',900:'#142034',950:'#0b1424'},
         univer: {
           blue: '#2563eb',     // Azul Royal (Primary)
           blueDark: '#1e3a8a', // Azul Profundo (Backgrounds/Headers)

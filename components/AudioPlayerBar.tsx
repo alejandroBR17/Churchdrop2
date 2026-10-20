@@ -44,7 +44,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({ item, onClose, o
   };
 
   return (
-    <div className="fixed bottom-4 inset-x-4 max-w-lg mx-auto z-50 animate-in slide-in-from-bottom-4 duration-200">
+    <div className="fixed bottom-24 md:bottom-4 inset-x-4 max-w-lg mx-auto z-50 animate-in slide-in-from-bottom-4 duration-200">
       <div className="bg-neutral-900/95 dark:bg-neutral-950/95 text-white border border-purple-500/30 rounded-2xl p-3 shadow-2xl backdrop-blur-xl flex flex-col gap-2">
         
         <audio 

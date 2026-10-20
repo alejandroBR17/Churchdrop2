@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import JSZip from 'jszip';
+import {createZipDownload, zipEligibility} from './services/zipDownload';
+import {requestNativeDownload, clearNativeDownloads} from './services/nativeDownload';
+import {DownloadQueueModal} from './components/DownloadQueueModal';
 import { 
   Plus, Grid, List, Search, RefreshCw, Loader2, Sparkles, 
   Trash2, Edit3, Download, Eye, FileText, Video, Music, 
@@ -25,10 +27,10 @@ import { MobileBottomNav } from './components/MobileBottomNav';
 import { MobileSidebarDrawer } from './components/MobileSidebarDrawer';
 
 import { MediaItem, MediaType, ToastState, ViewMode } from './types';
-import { MOCK_MEDIA } from './constants';
+import {libraryDays, uploadDay} from './services/libraryDays';
 import { 
   fetchFilesFromScript, deleteFileFromScript, renameFileInScript, 
-  getCachedFiles, groupItemsByEvent 
+  getCachedFiles, groupItemsByEvent, fetchTextContent, setFilePreservation
 } from './services/churchService';
 
 const GOLD_TEXT_CLASS = "text-amber-600 dark:text-univer-gold";
@@ -36,8 +38,8 @@ const GOLD_TEXT_CLASS = "text-amber-600 dark:text-univer-gold";
 export default function App() {
   // Theme & Layout State
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
-    return localStorage.getItem('theme') === 'dark' || 
-      (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    try { const theme = localStorage.getItem('theme'); return theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches); }
+    catch {return window.matchMedia('(prefers-color-scheme: dark)').matches;}
   });
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [activeFilter, setActiveFilter] = useState<MediaType | 'all'>('all');
@@ -45,9 +47,25 @@ export default function App() {
   
   // Data & Selection State
   const [items, setItems] = useState<MediaItem[]>([]);
+  const [selectedDay, setSelectedDay] = useState('recent');
+  const days = useMemo(()=>libraryDays(items),[items]);
+  const resolvedDay = selectedDay === 'recent' ? days[0]?.key : selectedDay === 'all' ? undefined : selectedDay;
+  const dayItems = useMemo(()=>resolvedDay ? items.filter(item=>uploadDay(item.date)===resolvedDay) : items,[items,resolvedDay]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [zipProgress, setZipProgress] = useState<{done: number; total: number} | null>(null);
+  const [zipError, setZipError] = useState('');
+  const zipRequest = useRef<AbortController | null>(null);
+  useEffect(() => () => zipRequest.current?.abort(), []);
+  useEffect(() => setZipError(''), [selectedIds]);
+  const selectedItems = useMemo(() => items.filter(item => selectedIds.includes(item.id)), [items, selectedIds]);
+  const zipAvailability = zipEligibility(selectedItems);
+  const [listError, setListError] = useState('');
+  const listRequest = useRef<AbortController | null>(null);
+  const preservationRequest = useRef<AbortController | null>(null);
+  const [preservingId, setPreservingId] = useState<string | null>(null);
+  useEffect(() => () => preservationRequest.current?.abort(), []);
   const [loadingStage, setLoadingStage] = useState<'idle' | 'stage1_cache' | 'stage2_server'>('idle');
   const [visibleItemLimit, setVisibleItemLimit] = useState<number>(12);
 
@@ -55,6 +73,8 @@ export default function App() {
   const [viewerItem, setViewerItem] = useState<MediaItem | null>(null);
   const [activeAudioItem, setActiveAudioItem] = useState<MediaItem | null>(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [downloadQueue, setDownloadQueue] = useState<MediaItem[] | null>(null);
+  useEffect(()=>()=>clearNativeDownloads(),[]);
   const [showHolyricsModal, setShowHolyricsModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showStatsModal, setShowStatsModal] = useState(false);
@@ -98,10 +118,10 @@ export default function App() {
   useEffect(() => {
     if (isDarkMode) {
       document.documentElement.classList.add('dark');
-      localStorage.setItem('theme', 'dark');
+      try {localStorage.setItem('theme', 'dark');} catch {}
     } else {
       document.documentElement.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
+      try {localStorage.setItem('theme', 'light');} catch {}
     }
   }, [isDarkMode]);
 
@@ -114,17 +134,21 @@ export default function App() {
   // Reset visible limit on filter/search change (progressive chunking)
   useEffect(() => {
     setVisibleItemLimit(12);
-  }, [activeFilter, searchTerm]);
+  }, [activeFilter, searchTerm, resolvedDay]);
 
   // Fetch Files with Step 1/2 Loading Architecture
   const loadFiles = async (showLoadingSpinner = true) => {
+    if (preservationRequest.current) {showToast('Aguarde a preservação terminar antes de atualizar.', 'info'); return;}
+    listRequest.current?.abort();
+    const request = new AbortController();
+    listRequest.current = request;
     if (showLoadingSpinner) setIsLoading(true);
     setIsRefreshing(true);
+    setListError('');
     setLoadingStage('stage1_cache');
-
+    const cached = getCachedFiles();
     try {
       // Step 1: Rapid Cache Hydration
-      const cached = getCachedFiles();
       if (cached.length > 0) {
         setItems(cached);
         if (showLoadingSpinner) setIsLoading(false);
@@ -132,42 +156,45 @@ export default function App() {
 
       // Step 2: Background Server Sync
       setLoadingStage('stage2_server');
-      const freshFiles = await fetchFilesFromScript();
-      if (freshFiles.length > 0) {
-        setItems(freshFiles);
-        showToast('Sincronização com o servidor concluída com sucesso!', 'success', 2500);
-      } else if (cached.length === 0) {
-        // Fallback mock data if server has 0 files or first setup
-        setItems(MOCK_MEDIA);
-      }
-    } catch (e) {
-      console.error('Erro ao buscar mídias:', e);
-      showToast('Exibindo arquivos cacheados do armazenamento local.', 'info');
+      const freshFiles = await fetchFilesFromScript(request.signal);
+      if (listRequest.current !== request || request.signal.aborted) return;
+      setItems(freshFiles);
+      setSelectedIds(previous => previous.filter(id => freshFiles.some(file => file.id === id)));
+      if (!showLoadingSpinner) showToast('Lista atualizada.', 'success', 2500);
+    } catch {
+      if (listRequest.current !== request || request.signal.aborted) return;
+      setListError(cached.length > 0
+        ? 'Não foi possível atualizar. Você está vendo a última lista desta sessão.'
+        : 'Não foi possível carregar os arquivos. Verifique sua conexão e tente novamente.');
     } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-      setLoadingStage('idle');
+      if (listRequest.current === request && !request.signal.aborted) {
+        setIsLoading(false);
+        setIsRefreshing(false);
+        setLoadingStage('idle');
+      }
     }
   };
 
   useEffect(() => {
     loadFiles();
+    return () => listRequest.current?.abort();
   }, []);
 
   // Keyboard Shortcuts Listener
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'a') {
-        if (!['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
+        if (zipRequest.current) {e.preventDefault(); return;}
+        if (!['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement).tagName) && !(e.target as HTMLElement).isContentEditable) {
           e.preventDefault();
           setSelectedIds(filteredItems.map(i => i.id));
           showToast(`${filteredItems.length} itens selecionados`, 'info');
         }
       }
       if (e.key === '/') {
-        if (!['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
+        if (!['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement).tagName) && !(e.target as HTMLElement).isContentEditable) {
           e.preventDefault();
-          const searchInput = document.querySelector('input[type="text"]') as HTMLInputElement;
+          const searchInput = document.getElementById('library-search') as HTMLInputElement;
           if (searchInput) searchInput.focus();
         }
       }
@@ -175,30 +202,34 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [items, searchTerm, activeFilter]);
+  }, [items, searchTerm, activeFilter, resolvedDay]);
 
   // Filter & Search Logic
   const filteredItems = useMemo(() => {
-    return items.filter(item => {
+    return dayItems.filter(item => {
       const matchesFilter = activeFilter === 'all' || item.type === activeFilter;
       const matchesSearch = !searchTerm.trim() || 
         item.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
         (item.eventName && item.eventName.toLowerCase().includes(searchTerm.toLowerCase()));
       return matchesFilter && matchesSearch;
     });
-  }, [items, activeFilter, searchTerm]);
+  }, [dayItems, activeFilter, searchTerm]);
+  useEffect(()=>{
+    const visible = new Set(filteredItems.map(item=>item.id));
+    setSelectedIds(previous=>previous.filter(id=>visible.has(id)));
+  },[filteredItems]);
 
   // Counts by type
   const counts = useMemo(() => {
     return {
-      all: items.length,
-      video: items.filter(i => i.type === 'video').length,
-      image: items.filter(i => i.type === 'image').length,
-      pdf: items.filter(i => i.type === 'pdf').length,
-      audio: items.filter(i => i.type === 'audio').length,
-      text: items.filter(i => i.type === 'text').length,
+      all: dayItems.length,
+      video: dayItems.filter(i => i.type === 'video').length,
+      image: dayItems.filter(i => i.type === 'image').length,
+      pdf: dayItems.filter(i => i.type === 'pdf').length,
+      audio: dayItems.filter(i => i.type === 'audio').length,
+      text: dayItems.filter(i => i.type === 'text').length,
     };
-  }, [items]);
+  }, [dayItems]);
 
   // Grouping by Service/Event Name
   const groupedItems = useMemo(() => {
@@ -216,38 +247,40 @@ export default function App() {
   // Selection Handlers
   const handleToggleSelect = (id: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
+    if (zipRequest.current) return;
     setSelectedIds(prev => 
       prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
     );
   };
 
   const handleSelectAll = () => {
+    if (zipRequest.current) return;
     setSelectedIds(filteredItems.map(i => i.id));
   };
 
   const handleClearSelection = () => {
+    if (zipRequest.current) return;
     setSelectedIds([]);
   };
 
-  // Download File Handler
+  // Native download: do not open a Drive tab or load whole video files in JS.
   const handleDownload = (url: string) => {
-    if (!url) {
-      showToast('Link de download não disponível', 'error');
-      return;
-    }
-    const link = document.createElement('a');
-    link.href = url;
-    link.target = '_blank';
-    link.download = '';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    showToast('Iniciando download...', 'info');
+    try {
+      const file = items.find(item=>item.downloadUrl===url);
+      requestNativeDownload(url,file?.name);
+      showToast('Download solicitado. Confira os downloads do navegador.', 'info');
+    } catch(error) {showToast(error instanceof Error ? error.message : 'Não foi possível solicitar o download.', 'error');}
+  };
+  const handleSeparateDownloads = () => {
+    if(!selectedItems.length)return;
+    if(selectedItems.length===1)handleDownload(selectedItems[0].downloadUrl);
+    else setDownloadQueue([...selectedItems]);
   };
 
   // Bulk Download as ZIP
   const handleBulkDownload = async () => {
-    const selected = items.filter(i => selectedIds.includes(i.id));
+    if (zipRequest.current) return;
+    const selected = selectedItems;
     if (selected.length === 0) return;
 
     if (selected.length === 1) {
@@ -255,42 +288,29 @@ export default function App() {
       return;
     }
 
-    showToast(`Gerando arquivo ZIP de ${selected.length} itens...`, 'info');
-    const zip = new JSZip();
-
-    let count = 0;
-    for (const item of selected) {
+    const controller = new AbortController(); zipRequest.current = controller;
+    setZipError(''); setZipProgress({done: 0, total: selected.length});
+    try {
+      const blob = await createZipDownload(selected, {signal: controller.signal,
+        onProgress: (done, total) => setZipProgress({done, total})});
+      const href = URL.createObjectURL(blob), a = document.createElement('a');
       try {
-        const downloadUrl = item.downloadUrl || item.url;
-        if (downloadUrl) {
-          const res = await fetch(downloadUrl);
-          const blob = await res.blob();
-          zip.file(item.name, blob);
-          count++;
-        }
-      } catch (e) {
-        console.warn(`Não foi possível baixar ${item.name} diretamente para o ZIP:`, e);
-      }
-    }
-
-    if (count > 0) {
-      const zipBlob = await zip.generateAsync({ type: 'blob' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(zipBlob);
-      a.download = `UniverMidia_Pacote_${new Date().toISOString().slice(0, 10)}.zip`;
-      a.click();
-      showToast('Pacote ZIP gerado e pronto!', 'success');
-    } else {
-      showToast('Erro ao agrupar arquivos em ZIP.', 'error');
-    }
+        a.href = href; a.download = `UniverMidia_Pacote_${new Date().toISOString().slice(0, 10)}.zip`;
+        document.body.appendChild(a); a.click(); a.remove();
+      } finally {setTimeout(() => URL.revokeObjectURL(href), 15000);}
+      showToast('ZIP completo pronto para baixar.', 'success');
+    } catch (error) {
+      if (controller.signal.aborted) showToast('ZIP cancelado.', 'info');
+      else setZipError(error instanceof Error ? error.message : 'Não foi possível criar o ZIP. Baixe os arquivos individualmente.');
+    } finally {zipRequest.current = null; setZipProgress(null);}
   };
 
   // Bulk Copy Links
-  const handleBulkCopyLinks = () => {
+  const handleBulkCopyLinks = async () => {
     const selected = items.filter(i => selectedIds.includes(i.id));
     const links = selected.map(i => `${i.name}: ${i.downloadUrl || i.url}`).join('\n');
-    navigator.clipboard.writeText(links);
-    showToast(`${selected.length} links copiados!`, 'success');
+    try {await navigator.clipboard.writeText(links); showToast(`${selected.length} links copiados!`, 'success');}
+    catch {showToast('Não foi possível copiar os links. Tente novamente.', 'error');}
   };
 
   // Delete File Handler
@@ -319,6 +339,24 @@ export default function App() {
   };
 
   // Rename File Handler
+  const handlePreservation = async (item: MediaItem) => {
+    if (preservationRequest.current || isRefreshing) return;
+    const controller = new AbortController(); preservationRequest.current = controller;
+    setPreservingId(item.id);
+    const preserved = !item.preserved;
+    try {
+      await setFilePreservation(item.id, preserved, controller.signal);
+      if (controller.signal.aborted) return;
+      setItems(previous => previous.map(file => file.id === item.id ? {...file, preserved} : file));
+      showToast(preserved ? 'Arquivo fora da revisão por idade. A exclusão manual continua disponível.' : 'Arquivo incluído novamente na revisão por idade.', 'success');
+    } catch {
+      if (!controller.signal.aborted) showToast('Não foi possível salvar. Atualize a biblioteca e tente novamente.', 'error');
+    } finally {
+      if (preservationRequest.current === controller) preservationRequest.current = null;
+      if (!controller.signal.aborted) setPreservingId(null);
+    }
+  };
+
   const handleConfirmRename = async (id: string, newName: string) => {
     await renameFileInScript(id, newName);
     setItems(prev => prev.map(i => i.id === id ? { ...i, name: newName } : i));
@@ -338,9 +376,12 @@ export default function App() {
   };
 
   // Open Media or Play Audio
-  const handleViewMedia = (item: MediaItem) => {
+  const handleViewMedia = async (item: MediaItem) => {
     if (item.type === 'audio') {
       setActiveAudioItem(item);
+    } else if (item.type === 'text') {
+      try { const textContent = await fetchTextContent(item.id); setViewerItem({...item, textContent}); }
+      catch {showToast('Não foi possível abrir o texto. Tente novamente.', 'error');}
     } else {
       setViewerItem(item);
     }
@@ -363,11 +404,12 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 flex flex-col font-sans antialiased transition-colors duration-200 select-none">
+    <div className="app-shell min-h-screen bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 flex flex-col font-sans antialiased transition-colors duration-200 select-none">
       
       {/* Toast Notification */}
       {toast.show && (
         <Toast 
+          show={toast.show}
           message={toast.message} 
           type={toast.type} 
           duration={toast.duration} 
@@ -392,7 +434,7 @@ export default function App() {
       />
 
       {/* Main Container Area */}
-      <div className="flex-1 md:pl-72 flex flex-col pb-24 md:pb-12">
+      <div className="flex-1 md:pl-64 flex flex-col pb-24 md:pb-12">
         
         {/* Sticky Header */}
         <Header 
@@ -424,8 +466,8 @@ export default function App() {
               <Loader2 size={15} className="animate-spin" />
               <span>
                 {loadingStage === 'stage1_cache' 
-                  ? '⚡ Etapa 1/2: Carregando mídias salvas no cache local...' 
-                  : '🔄 Etapa 2/2: Sincronizando novas mídias do servidor...'}
+                  ? 'Preparando a biblioteca…'
+                  : 'Consultando arquivos no Drive…'}
               </span>
             </div>
             <span className="text-[10px] font-mono tracking-wider uppercase bg-white/20 px-2.5 py-0.5 rounded-full font-extrabold">
@@ -437,8 +479,23 @@ export default function App() {
         {/* Content Body */}
         <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
           
+          <section className="library-intro mb-7 flex flex-wrap items-end justify-between gap-5">
+            <div><p className="eyebrow mb-2">Organize. Compartilhe. Projete.</p><h1 className="text-3xl sm:text-4xl font-bold tracking-tight">Sua biblioteca<span className="text-blue-500">.</span></h1><p className="mt-3 text-sm text-neutral-500 dark:text-neutral-400 max-w-md leading-relaxed">Os materiais da igreja, prontos para encontrar e levar à projeção.</p></div>
+            <div className="library-summary flex gap-6"><div><strong>{items.length}</strong><span>arquivos</span></div><div><strong>{Object.keys(groupItemsByEvent(items)).length}</strong><span>eventos e pastas</span></div></div>
+          </section>
+          <section aria-label="Arquivos por dia" className="mb-5 flex flex-wrap items-end gap-3 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4">
+            <label className="min-w-0 flex-1 text-xs font-semibold">Dia de envio
+              <select aria-label="Dia de envio" disabled={Boolean(zipProgress)} value={selectedDay} onChange={event=>{setSelectedDay(event.target.value);setSelectedIds([]);}} className="mt-2 block w-full min-w-0 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 px-3 py-2.5 text-sm">
+                <option value="recent">{days[0] ? `Mais recente · ${days[0].label}` : 'Dia mais recente'}</option>
+                {days.filter(day=>day.key!==days[0]?.key || day.key===selectedDay).map(day=><option key={day.key} value={day.key}>{day.label} · {day.count} arquivo(s)</option>)}
+                <option value="all">Todos os dias · biblioteca inteira</option>
+              </select>
+            </label>
+            <button type="button" disabled={!filteredItems.length || Boolean(zipProgress)} onClick={handleSelectAll} className="rounded-xl bg-blue-600 px-4 py-3 text-xs font-semibold text-white disabled:opacity-40">{resolvedDay ? 'Selecionar arquivos deste dia' : 'Selecionar resultados'}</button>
+            <p className="w-full text-xs text-neutral-500">{filteredItems.length} arquivo(s) nos filtros atuais. Datas pelo horário de Brasília.</p>
+          </section>
           {/* Category Filter Pills (Mobile Scrollable) */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-3 mb-6 md:hidden custom-scrollbar">
+          <div className="category-tabs flex items-center gap-2 overflow-x-auto pb-3 mb-6 md:hidden custom-scrollbar">
             <button 
               onClick={() => setActiveFilter('all')}
               className={`px-3.5 py-1.5 rounded-full text-xs font-bold shrink-0 transition-colors ${
@@ -501,6 +558,11 @@ export default function App() {
             </button>
           </div>
 
+          {listError && <div role="status" className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+            <p className="min-w-0 flex-1">{listError}</p>
+            <button type="button" disabled={isRefreshing} onClick={() => loadFiles(false)} className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-current px-3 py-2 font-semibold disabled:opacity-50"><RefreshCw size={16}/>Tentar novamente</button>
+          </div>}
+
           {/* Loading Skeleton */}
           {isLoading ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -514,25 +576,27 @@ export default function App() {
             </div>
           ) : filteredItems.length === 0 ? (
             /* Empty State */
-            <div className="flex flex-col items-center justify-center p-12 text-center my-12 bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-200/80 dark:border-neutral-800/80 shadow-sm max-w-lg mx-auto">
+            <div className="library-empty flex flex-col items-center justify-center p-8 sm:p-12 text-center my-8 bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-200/80 dark:border-neutral-800/80 shadow-sm max-w-lg mx-auto">
               <div className="w-16 h-16 rounded-2xl bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center text-neutral-400 mb-4">
                 <Search size={32} />
               </div>
               <h3 className="text-base font-bold text-neutral-800 dark:text-neutral-200 mb-1">
-                Nenhum arquivo encontrado
+                {listError && items.length === 0 ? 'Biblioteca indisponível' : 'Nenhum arquivo encontrado'}
               </h3>
               <p className="text-xs text-neutral-400 max-w-xs mb-6">
-                {searchTerm 
+                {listError && items.length === 0
+                  ? 'Use Tentar novamente para consultar os arquivos no servidor.'
+                  : searchTerm
                   ? `Nenhum resultado para "${searchTerm}". Tente buscar outro termo.`
                   : 'A biblioteca de mídias está vazia. Comece enviando novos arquivos.'}
               </p>
-              <button
+              {!listError && <button
                 onClick={() => setShowUploadModal(true)}
                 className="flex items-center gap-2 bg-univer-blue hover:bg-blue-600 text-white font-bold text-xs px-5 py-2.5 rounded-xl transition-all shadow-md shadow-blue-500/20"
               >
                 <Plus size={16} />
                 <span>Enviar Primeira Mídia</span>
-              </button>
+              </button>}
             </div>
           ) : (
             /* Media Cards Accordions grouped by Event */
@@ -549,7 +613,7 @@ export default function App() {
                     {/* Event Group Banner Header */}
                     <div 
                       onClick={() => toggleGroupCollapse(eventName)}
-                      className="flex items-center justify-between p-3.5 bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200/80 dark:border-neutral-800/80 shadow-xs cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors select-none"
+                      className="event-heading flex items-center justify-between gap-3 p-3.5 bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200/80 dark:border-neutral-800/80 shadow-xs cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors select-none"
                     >
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-xl bg-univer-blue/10 text-univer-blue flex items-center justify-center font-bold">
@@ -575,7 +639,7 @@ export default function App() {
                       <>
                         <div className={
                           viewMode === 'grid' 
-                            ? "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 animate-in fade-in duration-200"
+                            ? "grid grid-cols-1 min-[480px]:grid-cols-2 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 animate-in fade-in duration-200"
                             : "space-y-2 animate-in fade-in duration-200"
                         }>
                           {visibleGroupList.map((item, idx) => (
@@ -590,6 +654,9 @@ export default function App() {
                                 setIsBulkDeleteConfirm(false);
                               }}
                               onRename={(item) => setItemToRename(item)}
+                              onPreserve={handlePreservation}
+                              isPreserving={preservingId === item.id}
+                              preservationDisabled={Boolean(preservingId) || isRefreshing}
                               onDownload={(url) => handleDownload(url)}
                               onView={handleViewMedia}
                               onShare={(item) => {
@@ -631,13 +698,21 @@ export default function App() {
 
       </div>
 
+      {downloadQueue && <DownloadQueueModal files={downloadQueue} onClose={()=>setDownloadQueue(null)}/>}
       {/* Floating Batch Action Toolbar */}
       <BatchActionBar 
+        downloadBusy={zipProgress !== null}
+        downloadStatus={zipProgress ? `Preparando ${zipProgress.done} de ${zipProgress.total} arquivos…` : undefined}
+        downloadNotice={zipError}
+        downloadUnavailable={selectedIds.length > 1 && !zipAvailability.allowed}
+        onCancelDownload={() => zipRequest.current?.abort()}
         selectedCount={selectedIds.length}
         totalCount={filteredItems.length}
         onSelectAll={handleSelectAll}
         onClearSelection={handleClearSelection}
-        onBulkDownload={handleBulkDownload}
+        onBulkDownload={handleSeparateDownloads}
+        onZipDownload={handleBulkDownload}
+        zipReason={zipAvailability.reason}
         onBulkDelete={() => setIsBulkDeleteConfirm(true)}
         onBulkCopyLinks={handleBulkCopyLinks}
       />

@@ -1,4 +1,6 @@
+import {useBodyScrollLock} from '../hooks/useBodyScrollLock';
 import React, { useState } from 'react';
+import {QRCodeSVG} from 'qrcode.react';
 import { X, QrCode, Copy, Check, Smartphone, Share2, ExternalLink } from 'lucide-react';
 
 interface QuickShareModalProps {
@@ -12,22 +14,23 @@ export const QuickShareModal: React.FC<QuickShareModalProps> = ({
   onClose,
   showToast
 }) => {
+  const [copied, setCopied] = useState(false);
+  // Never pass Vercel share/protection tokens or session parameters to a QR service.
+  const currentUrl = window.location.origin + window.location.pathname;
+  useBodyScrollLock(isOpen);
   if (!isOpen) return null;
 
-  const [copied, setCopied] = useState(false);
-  const currentUrl = window.location.href;
-  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(currentUrl)}`;
-
-  const handleCopyLink = () => {
-    navigator.clipboard.writeText(currentUrl);
-    setCopied(true);
-    showToast('Link copiado para a área de transferência!', 'success');
-    setTimeout(() => setCopied(false), 2500);
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(currentUrl);
+      setCopied(true);
+      showToast('Link copiado.', 'success');
+    } catch {showToast('Não foi possível copiar. Selecione o endereço abaixo.', 'error');}
   };
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative w-full max-w-md bg-white dark:bg-neutral-900 rounded-3xl shadow-2xl border border-neutral-200/80 dark:border-neutral-800/80 overflow-hidden flex flex-col">
+      <div role="dialog" aria-modal="true" aria-label="Abrir no celular" className="workspace-dialog relative w-full max-w-md bg-white dark:bg-neutral-900 rounded-3xl shadow-2xl border border-neutral-200/80 dark:border-neutral-800/80 overflow-hidden flex flex-col max-h-[90dvh] overflow-y-auto">
         
         {/* Header */}
         <div className="p-5 border-b border-neutral-100 dark:border-neutral-800/80 flex items-center justify-between bg-neutral-50/50 dark:bg-neutral-900/50">
@@ -50,11 +53,7 @@ export const QuickShareModal: React.FC<QuickShareModalProps> = ({
           
           {/* QR Code Frame */}
           <div className="w-52 h-52 mx-auto p-3 bg-white rounded-2xl shadow-xl border border-neutral-200 flex items-center justify-center">
-            <img 
-              src={qrCodeUrl} 
-              alt="QR Code de Upload" 
-              className="w-full h-full object-contain"
-            />
+            <QRCodeSVG value={currentUrl} size={184} marginSize={2} title="Abrir Univer Mídia" className="w-full h-full"/>
           </div>
 
           <div className="text-xs text-neutral-600 dark:text-neutral-300 space-y-1">
@@ -63,7 +62,7 @@ export const QuickShareModal: React.FC<QuickShareModalProps> = ({
               Abra a câmera do seu smartphone
             </p>
             <p className="text-neutral-400 text-[11px]">
-              O celular abrirá diretamente a tela de upload para mandar vídeos e fotos do culto.
+              Abra o Univer Mídia e informe o código de operador. A prévia também exige acesso autorizado pela Vercel.
             </p>
           </div>
 

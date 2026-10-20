@@ -1,3 +1,4 @@
+import {useBodyScrollLock} from '../hooks/useBodyScrollLock';
 import React from 'react';
 import { 
   X, Sparkles, HardDrive, Keyboard, DownloadCloud, Sun, Moon, 
@@ -34,6 +35,7 @@ export const MobileSidebarDrawer: React.FC<MobileSidebarDrawerProps> = ({
   deferredPrompt,
   handleInstallClick,
 }) => {
+  useBodyScrollLock(isOpen);
   if (!isOpen) return null;
 
   return (
@@ -45,7 +47,7 @@ export const MobileSidebarDrawer: React.FC<MobileSidebarDrawerProps> = ({
       />
 
       {/* Drawer Content */}
-      <div className="relative w-4/5 max-w-xs h-full bg-white dark:bg-neutral-900 shadow-2xl flex flex-col justify-between overflow-y-auto custom-scrollbar animate-in slide-in-from-right duration-200">
+      <div role="dialog" aria-modal="true" aria-label="Menu principal" className="mobile-drawer relative w-full max-w-sm h-full bg-white dark:bg-neutral-900 shadow-2xl flex flex-col justify-between overflow-y-auto custom-scrollbar animate-in slide-in-from-right duration-200">
         
         {/* Drawer Header */}
         <div>
@@ -65,7 +67,7 @@ export const MobileSidebarDrawer: React.FC<MobileSidebarDrawerProps> = ({
                 </span>
               </div>
             </div>
-            <button 
+            <button aria-label="Fechar menu"
               onClick={onClose}
               className="p-1.5 rounded-xl text-neutral-400 hover:text-neutral-700 dark:hover:text-white"
             >
@@ -77,13 +79,13 @@ export const MobileSidebarDrawer: React.FC<MobileSidebarDrawerProps> = ({
           <div className="p-4">
             <button
               onClick={() => { onClose(); onOpenHolyrics(); }}
-              className="w-full flex items-center gap-3 p-3.5 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold shadow-lg shadow-purple-500/25 active:scale-95 transition-all text-left"
+              className="w-full flex items-center gap-3 p-3.5 rounded-2xl bg-blue-600 text-white font-bold shadow-lg shadow-purple-500/25 active:scale-95 transition-all text-left"
             >
               <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
                 <Sparkles size={20} />
               </div>
               <div>
-                <span className="block text-xs font-black uppercase tracking-wider text-purple-200">Ferramenta Especial</span>
+                <span className="block text-xs font-black uppercase tracking-wider text-purple-200">Preparar texto</span>
                 <span className="block text-sm font-extrabold leading-tight">Formatador Holyrics</span>
               </div>
             </button>

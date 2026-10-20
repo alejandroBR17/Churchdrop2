@@ -1,3 +1,4 @@
+import {useBodyScrollLock} from '../hooks/useBodyScrollLock';
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, Download, ExternalLink, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, 
@@ -27,8 +28,6 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
   onDownload,
   showToast
 }) => {
-  if (!item) return null;
-
   // Image Zoom & Rotate Controls
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
@@ -49,6 +48,7 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
   const [touchEndX, setTouchEndX] = useState(0);
 
   useEffect(() => {
+    if (!item) return;
     // Reset state on media item change
     setZoom(1);
     setRotation(0);
@@ -66,6 +66,8 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [item, hasNext, hasPrev]);
+  useBodyScrollLock(Boolean(item));
+  if (!item) return null;
 
   const handleCopyText = (content?: string) => {
     if (!content) return;
@@ -110,11 +112,11 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-md animate-in fade-in duration-200">
+    <div role="dialog" aria-modal="true" aria-label={`Visualizar ${item.name}`} className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-md animate-in fade-in duration-200">
       
       {/* Top Bar Navigation */}
-      <div className="absolute top-0 inset-x-0 z-20 flex items-center justify-between p-4 bg-gradient-to-b from-black/80 to-transparent text-white">
-        <div className="flex items-center gap-3 min-w-0 pr-4">
+      <div className="absolute top-0 inset-x-0 z-20 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 p-4 bg-gradient-to-b from-black/80 to-transparent text-white">
+        <div className="flex items-center gap-3 min-w-0 basis-full sm:basis-auto sm:flex-1 pr-4">
           <span className="text-xs font-bold uppercase tracking-widest text-univer-gold px-2.5 py-1 bg-white/10 rounded-full border border-white/10 shrink-0">
             {item.type}
           </span>
@@ -123,7 +125,7 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
           </h2>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 shrink-0 ml-auto">
           {/* Zoom controls for images */}
           {item.type === 'image' && (
             <>
@@ -164,7 +166,7 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
           {/* Drive Direct Link if ID exists */}
           {item.id && !item.id.startsWith('temp_') && (
             <button 
-              onClick={() => window.open(`https://drive.google.com/file/d/${item.id}/view`, '_blank')}
+              onClick={() => window.open(`https://drive.google.com/file/d/${encodeURIComponent(item.id)}/view`, '_blank', 'noopener,noreferrer')}
               className="p-2 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors text-xs font-semibold hidden sm:flex items-center gap-1.5"
               title="Abrir no Google Drive"
             >
@@ -185,7 +187,7 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
 
       {/* Main Content Viewer Canvas */}
       <div 
-        className="w-full h-full flex items-center justify-center p-4 pt-16 pb-16 overflow-hidden relative"
+        className="w-full h-full flex items-center justify-center p-4 pt-28 sm:pt-16 pb-16 overflow-hidden relative"
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
@@ -219,7 +221,7 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
                 <div className="flex justify-center gap-3">
                   {!item.id.startsWith('temp_') && (
                     <button 
-                      onClick={() => window.open(`https://drive.google.com/file/d/${item.id}/view`, '_blank')}
+                      onClick={() => window.open(`https://drive.google.com/file/d/${encodeURIComponent(item.id)}/view`, '_blank', 'noopener,noreferrer')}
                       className="px-4 py-2 bg-white text-black font-bold rounded-xl text-xs hover:bg-neutral-200 transition-colors"
                     >
                       Abrir no Google Drive
