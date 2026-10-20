@@ -323,3 +323,11 @@ Fonte do Apps Script aberto foi comparada com o baseline Git e correspondia exat
 ### Ativação confirmada em 19/10/2026 — prazo final de nove dias
 
 Confirmação humana explícita: publicar link pessoal de 9 dias. O prazo mais recente substitui a proposta anterior de 90 dias: servidor, Apps Script, interface, documentação e testes ajustados para nove dias. Sem pedir nova confirmação ou ampliar para 90 por suposição. Publicação no projeto univer-midia e domínio churchdrop2.vercel.app; escopos/permissões e materiais existentes preservados.
+
+
+Backend v4 implantado na implantação existente, fonte conferida com arquivo revisado, mantendo endpoint/manifesto/escopos/permissões. Controle assinado de status respondeu corretamente. Produção: deployment dpl_59aDGrCxzDrXxVDnWZ41tasmidpH, READY/target production, SHA 6a3605686cf8e68d50a7460e6ed52f542dfae119, projeto/equipe corretos e alias https://churchdrop2.vercel.app/ conferidos. HTML público corresponde ao build local (363,45 kB JS inicial/gzip 115,67 kB). 103 testes, tipos/build e ensaios isolados nas quatro larguras aprovados para o prazo final de nove dias.
+
+Teste real iniciou pela interface de produção: login por código, status sem link ativo, criação e retorno com vencimento em 28/10/2026. Chave de conferência guardada privadamente sem imprimir. Chamadas reais confirmaram validade de nove dias, entrada por link, cookie autenticado e leitura da biblioteca HTTP 200; cancelamento recusou reutilização HTTP 401 e tornou o cookie derivado não autenticado, preservando sessão por código. Sessão isolada de teste encerrada e arquivo privado temporário removido. Nenhum envio, renomeação, compartilhamento, preservação ou lixeira de mídia. Não equivale a teste físico em outro aparelho.
+
+
+Após cancelar a chave de conferência, emitido o link pessoal definitivo pela interface real. Vencimento exibido em 28/10/2026; endereço guardado apenas em arquivo privado fora do Git e aberto ao responsável para cópia. Segredo não incluído no relatório, PR, screenshot ou saída de terminal. O modal foi fechado após preservar o link e reaberto somente com status, sem repetir a chave. PR #1 atualizada/draft, sem merge/main. Registro final documental local evita nova implantação redundante.
