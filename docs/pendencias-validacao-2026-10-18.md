@@ -28,13 +28,11 @@ Código implantado: 2069e891eebc1143b11bb297ebfbeb14c5cae4f9. Projeto Vercel uni
 
 Essas ações serão realizadas pelo responsável ou em teste remoto especificamente autorizado. Os ensaios automáticos não criaram, compartilharam nem removeram novos arquivos reais nesta madrugada.
 
-## Dependências: risco residual explícito
+## Dependências de desenvolvimento — atualização de 09/11/2026
 
-A auditoria anterior passou de nove para sete alertas após atualizar Vite/esbuild. Permanecem cinco altos e dois moderados na cadeia de desenvolvimento Tailwind 3.4.19. São dois problemas de origem propagados por dependências: processamento de padrões em braces e processamento de seletores em postcss-selector-parser. Auditoria omitindo dev teve zero alertas conhecidos, o que não equivale a uma auditoria completa ou garantia de segurança.
+A auditoria atual encontrou um alerta moderado em `postcss-selector-parser` 6.1.4, usado pelo Tailwind. O lockfile atualiza o parser para 6.1.6, na mesma série, e a auditoria do npm passou a retornar zero alertas conhecidos. Os números da auditoria de outubro são históricos.
 
-`npm ls` confirmou braces 3.0.3 e postcss-selector-parser 6.1.4 sob Tailwind. A linha Tailwind 3 disponível termina em 3.4.19 nesta conferência. Não foi usada uma substituição de versão incompatível para apenas esconder o alerta. Os arquivos/padrões processados no build vêm do repositório; uploads e metadados do Drive não são passados ao gerador CSS. Isso limita a exposição observada, sem corrigir a vulnerabilidade das ferramentas ou eliminar risco de fontes de build não confiáveis.
-
-Fontes: [aviso braces](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm), [aviso de seletores PostCSS](https://github.com/advisories/GHSA-rj75-hqrm-r3gf).
+Fonte: [aviso de seletores PostCSS](https://github.com/advisories/GHSA-rj75-hqrm-r3gf).
 
 ## Próxima decisão técnica
 
