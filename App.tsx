@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import {createZipDownload, zipEligibility} from './services/zipDownload';
 import {requestNativeDownload, clearNativeDownloads} from './services/nativeDownload';
 import {DownloadQueueModal} from './components/DownloadQueueModal';
 import { 
@@ -53,13 +52,7 @@ export default function App() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [zipProgress, setZipProgress] = useState<{done: number; total: number} | null>(null);
-  const [zipError, setZipError] = useState('');
-  const zipRequest = useRef<AbortController | null>(null);
-  useEffect(() => () => zipRequest.current?.abort(), []);
-  useEffect(() => setZipError(''), [selectedIds]);
   const selectedItems = useMemo(() => items.filter(item => selectedIds.includes(item.id)), [items, selectedIds]);
-  const zipAvailability = zipEligibility(selectedItems);
   const [listError, setListError] = useState('');
   const listRequest = useRef<AbortController | null>(null);
   const preservationRequest = useRef<AbortController | null>(null);
@@ -72,7 +65,7 @@ export default function App() {
   const [viewerItem, setViewerItem] = useState<MediaItem | null>(null);
   const [activeAudioItem, setActiveAudioItem] = useState<MediaItem | null>(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
-  const [downloadQueue, setDownloadQueue] = useState<MediaItem[] | null>(null);
+  const [downloadQueue, setDownloadQueue] = useState<{files:MediaItem[];requestedIds:string[]} | null>(null);
   useEffect(()=>()=>clearNativeDownloads(),[]);
   const [showHolyricsModal, setShowHolyricsModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
@@ -182,7 +175,6 @@ export default function App() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'a') {
-        if (zipRequest.current) {e.preventDefault(); return;}
         if (!['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement).tagName) && !(e.target as HTMLElement).isContentEditable) {
           e.preventDefault();
           setSelectedIds(filteredItems.map(i => i.id));
@@ -241,19 +233,16 @@ export default function App() {
   // Selection Handlers
   const handleToggleSelect = (id: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    if (zipRequest.current) return;
     setSelectedIds(prev => 
       prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
     );
   };
 
   const handleSelectAll = () => {
-    if (zipRequest.current) return;
     setSelectedIds(filteredItems.map(i => i.id));
   };
 
   const handleClearSelection = () => {
-    if (zipRequest.current) return;
     setSelectedIds([]);
   };
 
@@ -268,35 +257,14 @@ export default function App() {
   const handleSeparateDownloads = () => {
     if(!selectedItems.length)return;
     if(selectedItems.length===1)handleDownload(selectedItems[0].downloadUrl);
-    else setDownloadQueue([...selectedItems]);
-  };
-
-  // Bulk Download as ZIP
-  const handleBulkDownload = async () => {
-    if (zipRequest.current) return;
-    const selected = selectedItems;
-    if (selected.length === 0) return;
-
-    if (selected.length === 1) {
-      handleDownload(selected[0].downloadUrl || selected[0].url);
-      return;
-    }
-
-    const controller = new AbortController(); zipRequest.current = controller;
-    setZipError(''); setZipProgress({done: 0, total: selected.length});
-    try {
-      const blob = await createZipDownload(selected, {signal: controller.signal,
-        onProgress: (done, total) => setZipProgress({done, total})});
-      const href = URL.createObjectURL(blob), a = document.createElement('a');
+    else {
+      const first=selectedItems[0];
       try {
-        a.href = href; a.download = `UniverMidia_Pacote_${new Date().toISOString().slice(0, 10)}.zip`;
-        document.body.appendChild(a); a.click(); a.remove();
-      } finally {setTimeout(() => URL.revokeObjectURL(href), 15000);}
-      showToast('ZIP completo pronto para baixar.', 'success');
-    } catch (error) {
-      if (controller.signal.aborted) showToast('ZIP cancelado.', 'info');
-      else setZipError(error instanceof Error ? error.message : 'Não foi possível criar o ZIP. Baixe os arquivos individualmente.');
-    } finally {zipRequest.current = null; setZipProgress(null);}
+        // Preserve the user gesture for the first browser-native download.
+        requestNativeDownload(first.downloadUrl,first.name);
+        setDownloadQueue({files:[...selectedItems],requestedIds:[first.id]});
+      } catch(error) {showToast(error instanceof Error?error.message:'Não foi possível iniciar os downloads.','error');}
+    }
   };
 
   // Bulk Copy Links
@@ -479,16 +447,16 @@ export default function App() {
           </section>
           <section aria-label="Arquivos por dia" className="mb-5 flex flex-wrap items-end gap-3 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4">
             <label className="min-w-0 flex-1 text-xs font-semibold">Dia de envio
-              <select aria-label="Dia de envio" disabled={Boolean(zipProgress)} value={selectedDay} onChange={event=>{setSelectedDay(event.target.value);setSelectedIds([]);}} className="mt-2 block w-full min-w-0 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 px-3 py-2.5 text-sm">
+              <select aria-label="Dia de envio" value={selectedDay} onChange={event=>{setSelectedDay(event.target.value);setSelectedIds([]);}} className="mt-2 block w-full min-w-0 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 px-3 py-2.5 text-sm">
                 <option value="recent">{days[0] ? `Mais recente · ${days[0].label}` : 'Dia mais recente'}</option>
                 {days.filter(day=>day.key!==days[0]?.key || day.key===selectedDay).map(day=><option key={day.key} value={day.key}>{day.label} · {day.count} arquivo(s)</option>)}
                 <option value="all">Todos os dias · biblioteca inteira</option>
               </select>
             </label>
-            <button type="button" disabled={!filteredItems.length || Boolean(zipProgress)} onClick={handleSelectAll} className="rounded-xl bg-blue-600 px-4 py-3 text-xs font-semibold text-white disabled:opacity-40">{resolvedDay ? 'Selecionar arquivos deste dia' : 'Selecionar resultados'}</button>
+            <button type="button" disabled={!filteredItems.length} onClick={handleSelectAll} className="rounded-xl bg-blue-600 px-4 py-3 text-xs font-semibold text-white disabled:opacity-40">{resolvedDay ? 'Selecionar arquivos deste dia' : 'Selecionar resultados'}</button>
             <div className="w-full space-y-2">
               <p role="status" className="text-xs leading-relaxed text-neutral-500">Mostrando {filteredItems.length} de {items.length} arquivos nos filtros atuais. {resolvedDay ? `Dia ${resolvedDay.split('-').reverse().join('/')}.` : 'Todos os dias.'}</p>
-              {items.length>0 && (resolvedDay || activeFilter!=='all' || searchTerm.trim()) && <button type="button" disabled={Boolean(zipProgress)} onClick={()=>{setSelectedDay('all');setActiveFilter('all');setSearchTerm('');setSelectedIds([]);setCollapsedGroups({});}} className="secondary-button w-full sm:w-auto disabled:opacity-40">Mostrar todos os arquivos ({items.length})</button>}
+              {items.length>0 && (resolvedDay || activeFilter!=='all' || searchTerm.trim()) && <button type="button" onClick={()=>{setSelectedDay('all');setActiveFilter('all');setSearchTerm('');setSelectedIds([]);setCollapsedGroups({});}} className="secondary-button w-full sm:w-auto disabled:opacity-40">Mostrar todos os arquivos ({items.length})</button>}
             </div>
           </section>
           {/* Category Filter Pills (Mobile Scrollable) */}
@@ -695,21 +663,14 @@ export default function App() {
 
       </div>
 
-      {downloadQueue && <DownloadQueueModal files={downloadQueue} onClose={()=>setDownloadQueue(null)}/>}
+      {downloadQueue && <DownloadQueueModal files={downloadQueue.files} initialRequestedIds={downloadQueue.requestedIds} autoStart onClose={()=>setDownloadQueue(null)}/>}
       {/* Floating Batch Action Toolbar */}
       <BatchActionBar 
-        downloadBusy={zipProgress !== null}
-        downloadStatus={zipProgress ? `Preparando ${zipProgress.done} de ${zipProgress.total} arquivos…` : undefined}
-        downloadNotice={zipError}
-        downloadUnavailable={selectedIds.length > 1 && !zipAvailability.allowed}
-        onCancelDownload={() => zipRequest.current?.abort()}
         selectedCount={selectedIds.length}
         totalCount={filteredItems.length}
         onSelectAll={handleSelectAll}
         onClearSelection={handleClearSelection}
         onBulkDownload={handleSeparateDownloads}
-        onZipDownload={handleBulkDownload}
-        zipReason={zipAvailability.reason}
         onBulkDelete={() => setIsBulkDeleteConfirm(true)}
         onBulkCopyLinks={handleBulkCopyLinks}
       />

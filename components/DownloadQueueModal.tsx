@@ -4,13 +4,14 @@ import type {MediaItem} from '../types';
 import {requestNativeDownload, browserDownloadUrl} from '../services/nativeDownload';
 import {useBodyScrollLock} from '../hooks/useBodyScrollLock';
 
-export function DownloadQueueModal({files,onClose}:{files:MediaItem[];onClose:()=>void}) {
-  const [requested,setRequested] = useState<Set<string>>(new Set());
+export function DownloadQueueModal({files,onClose,initialRequestedIds=[],autoStart=false}:{files:MediaItem[];onClose:()=>void;initialRequestedIds?:string[];autoStart?:boolean}) {
+  const [requested,setRequested] = useState<Set<string>>(()=>new Set(initialRequestedIds));
   const [errors,setErrors] = useState<Record<string,string>>({});
   const [running,setRunning] = useState(false);
   const epoch = useRef(0);
+  const runningRef = useRef(false);
   useBodyScrollLock(true);
-  useEffect(()=>()=>{epoch.current++;},[]);
+  useEffect(()=>()=>{epoch.current++;runningRef.current=false;},[]);
   const request = (file:MediaItem) => {
     try {
       requestNativeDownload(file.downloadUrl,file.name);
@@ -18,19 +19,28 @@ export function DownloadQueueModal({files,onClose}:{files:MediaItem[];onClose:()
       setErrors(previous=>{const next={...previous};delete next[file.id];return next;});
     } catch(error) {setErrors(previous=>({...previous,[file.id]:error instanceof Error ? error.message : 'Não foi possível solicitar o arquivo.'}));}
   };
-  const requestAll = async () => {
-    if(running)return;
+  const requestAll = async (initialDelay=0) => {
+    if(runningRef.current)return;
+    runningRef.current=true;
     const run = ++epoch.current;setRunning(true);
     const remaining=files.filter(file=>!requested.has(file.id));
+    if(initialDelay)await new Promise(resolve=>setTimeout(resolve,initialDelay));
     for(let i=0;i<remaining.length;i++) {
       if(epoch.current!==run)break;
       request(remaining[i]);
       // Space browser requests, not simulated download progress/completion.
       if(i<remaining.length-1)await new Promise(resolve=>setTimeout(resolve,1200));
     }
-    if(epoch.current===run)setRunning(false);
+    if(epoch.current===run){runningRef.current=false;setRunning(false);}
   };
-  const pause = () => {epoch.current++;setRunning(false);};
+  useEffect(()=>{
+    if(!autoStart)return;
+    // Deferring the effect lets StrictMode cancel its rehearsal without duplicates.
+    const initialEpoch=epoch.current;
+    const timer=setTimeout(()=>{if(epoch.current===initialEpoch)void requestAll(1200);},0);
+    return()=>clearTimeout(timer);
+  },[autoStart]);
+  const pause = () => {epoch.current++;runningRef.current=false;setRunning(false);};
   const next = files.find(file=>!requested.has(file.id));
   return <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 bg-black/60 backdrop-blur-sm">
     <section role="dialog" aria-modal="true" aria-label="Baixar arquivos separados" className="workspace-dialog max-w-lg w-full flex flex-col overflow-hidden text-neutral-900 dark:text-neutral-100">
@@ -46,7 +56,7 @@ export function DownloadQueueModal({files,onClose}:{files:MediaItem[];onClose:()
         <p className="text-[11px] leading-relaxed text-neutral-500">O app não consegue confirmar se o arquivo foi salvo. Arquivos grandes podem exigir uma confirmação do Google; nesse caso, use o link de verificação do arquivo.</p>
       </div>
       <footer className="p-4 border-t border-neutral-200 dark:border-neutral-800 flex flex-wrap justify-end gap-2 shrink-0">
-        {running ? <button className="secondary-button" onClick={pause}><Pause size={16}/>Pausar solicitações</button> : <><button className="secondary-button" disabled={!next} onClick={()=>{if(next)request(next);}}>Baixar próximo</button><button className="primary-button disabled:opacity-40" disabled={!next} onClick={requestAll}><Download size={16}/>Baixar todos separados</button></>}
+        {running ? <button className="secondary-button" onClick={pause}><Pause size={16}/>Pausar fila</button> : !next ? <button className="primary-button" onClick={onClose}>Fechar</button> : <><button className="secondary-button" disabled={!next} onClick={()=>{if(next)request(next);}}>Baixar próximo</button><button className="primary-button disabled:opacity-40" disabled={!next} onClick={()=>{void requestAll();}}><Download size={16}/>Baixar todos separados</button></>}
       </footer>
     </section>
   </div>;
