@@ -22,7 +22,6 @@ import { ShortcutsModal } from './components/ShortcutsModal';
 import { RenameModal } from './components/RenameModal';
 import { ConfirmModal } from './components/ConfirmModal';
 import { AudioPlayerBar } from './components/AudioPlayerBar';
-import { AddMenu } from './components/AddMenu';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { MobileSidebarDrawer } from './components/MobileSidebarDrawer';
 
@@ -79,7 +78,6 @@ export default function App() {
   const [showShareModal, setShowShareModal] = useState(false);
   const [showStatsModal, setShowStatsModal] = useState(false);
   const [showShortcutsModal, setShowShortcutsModal] = useState(false);
-  const [showAddMenu, setShowAddMenu] = useState(false);
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
 
   // Rename & Delete Confirm Modals
@@ -477,10 +475,10 @@ export default function App() {
         )}
 
         {/* Content Body */}
-        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-6">
           
-          <section className="library-intro mb-7 flex flex-wrap items-end justify-between gap-5">
-            <div><p className="eyebrow mb-2">Organize. Compartilhe. Projete.</p><h1 className="text-3xl sm:text-4xl font-bold tracking-tight">Sua biblioteca<span className="text-blue-500">.</span></h1><p className="mt-3 text-sm text-neutral-500 dark:text-neutral-400 max-w-md leading-relaxed">Os materiais da igreja, prontos para encontrar e levar à projeção.</p></div>
+          <section className="library-intro mb-4 sm:mb-7 flex flex-wrap items-end justify-between gap-5">
+            <div><p className="eyebrow mb-2 hidden sm:block">Organize. Compartilhe. Projete.</p><h1 className="text-2xl sm:text-4xl font-bold tracking-tight">Sua biblioteca<span className="text-blue-500">.</span></h1><p className="hidden sm:block mt-3 text-sm text-neutral-500 dark:text-neutral-400 max-w-md leading-relaxed">Os materiais da igreja, prontos para encontrar e levar à projeção.</p></div>
             <div className="library-summary flex gap-6"><div><strong>{items.length}</strong><span>arquivos</span></div><div><strong>{Object.keys(groupItemsByEvent(items)).length}</strong><span>eventos e pastas</span></div></div>
           </section>
           <section aria-label="Arquivos por dia" className="mb-5 flex flex-wrap items-end gap-3 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4">
@@ -639,7 +637,7 @@ export default function App() {
                       <>
                         <div className={
                           viewMode === 'grid' 
-                            ? "grid grid-cols-1 min-[480px]:grid-cols-2 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 animate-in fade-in duration-200"
+                            ? "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 animate-in fade-in duration-200"
                             : "space-y-2 animate-in fade-in duration-200"
                         }>
                           {visibleGroupList.map((item, idx) => (
@@ -798,20 +796,12 @@ export default function App() {
         onConfirm={handleConfirmDelete}
       />
 
-      {/* Mobile Add Sheet Menu */}
-      <AddMenu 
-        isOpen={showAddMenu}
-        onClose={() => setShowAddMenu(false)}
-        onUploadClick={() => setShowUploadModal(true)}
-        onTextClick={() => setShowHolyricsModal(true)}
-        os={os}
-      />
-
       {/* Mobile Bottom Navigation */}
       <MobileBottomNav 
         activeFilter={activeFilter}
         setActiveFilter={setActiveFilter}
-        setShowAddMenu={setShowAddMenu}
+        onOpenUpload={() => setShowUploadModal(true)}
+        onOpenHolyrics={() => setShowHolyricsModal(true)}
         setSidebarOpen={setShowMobileSidebar}
         sidebarOpen={showMobileSidebar}
         GOLD_TEXT_CLASS={GOLD_TEXT_CLASS}

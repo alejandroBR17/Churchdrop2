@@ -74,7 +74,7 @@ export const Header: React.FC<HeaderProps> = ({
             <button onClick={()=>setViewMode('list')} aria-pressed={viewMode==='list'} title="Visualização em Lista"><List size={18}/></button>
           </div>
           <button onClick={onOpenStats} className="icon-button hidden lg:flex" title="Estatísticas e Saúde do Servidor"><HardDrive size={18}/></button>
-          {onOpenHolyrics && <button onClick={onOpenHolyrics} className="secondary-button hidden xl:flex" title="Formatador Holyrics / Projeção"><Sparkles size={17}/>Holyrics</button>}
+          {onOpenHolyrics && <button onClick={onOpenHolyrics} className="secondary-button hidden md:flex" title="Formatador Holyrics / Projeção"><Sparkles size={17}/>Holyrics</button>}
         </div>
         {selectedCount>0 && <div className="flex items-center justify-between gap-2 text-xs font-medium text-blue-600 dark:text-blue-300"><span>{selectedCount} de {totalCount} selecionados</span><button onClick={onClearSelection} className="underline underline-offset-4">Limpar seleção</button></div>}
       </div>

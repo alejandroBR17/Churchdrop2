@@ -104,3 +104,12 @@ A revogação durável exige uma consulta adicional ao Apps Script em cada requi
 
 
 Se o link vencer, use Entrar com o código e depois Meu link para criar outro válido por 90 dias. Um link vencido/cancelado nunca se renova sozinho; criação de outro continua exigindo nova confirmação do código. A correção explícita de duração do link inicial de nove para noventa dias preserva sua chave, sem renovar repetidamente nem reativar links cancelados.
+
+
+## Uso no celular e envio
+
+Holyrics está disponível diretamente na barra inferior do celular e no cabeçalho do notebook. Enviar abre a seleção de arquivos sem um menu intermediário. A apresentação da biblioteca ocupa menos espaço no celular, e os controles de pesquisa usam fonte de 16px para evitar zoom automático no iPhone.
+
+A fila envia até dois arquivos de no máximo 8 MiB em paralelo; arquivos maiores usam a conexão sozinhos. Se um envio falhar, a fila aguarda o outro envio ativo terminar e mantém somente os arquivos ainda não confirmados para nova tentativa. Pausar mantém as sessões em memória; a retomada consulta a posição no Drive. Recarregar a página ainda não recupera uma transferência incompleta.
+
+A preparação de fotos JPEG/PNG/WebP é sequencial para limitar memória. O compactador carrega apenas quando necessário e seu worker é servido pelo próprio app. O original é mantido se o resultado não ficar menor; GIF e HEIC seguem no formato original. Isso reduz trabalho de preparação, mas não comprime vídeos nem garante uma velocidade de rede específica.

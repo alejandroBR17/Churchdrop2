@@ -1,7 +1,8 @@
 import {useBodyScrollLock} from '../hooks/useBodyScrollLock';
 import React, { useState, useEffect, useRef } from 'react';
 import {X, Upload, FileText, Loader2} from 'lucide-react';
-import imageCompression from 'browser-image-compression';
+import {runUploadQueue} from '../services/uploadQueue';
+import compressionWorkerUrl from 'browser-image-compression/dist/browser-image-compression.js?url';
 import type {PendingUpload, UploadStatus} from '../services/churchService';
 import {getPendingUploads, publishPendingUpload, getServiceName, uploadFileToScript} from '../services/churchService';
 
@@ -30,9 +31,8 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   const [compressImages, setCompressImages] = useState(true);
   
   const [isUploading, setIsUploading] = useState(false);
-  const [transfer, setTransfer] = useState<UploadStatus | null>(null);
-  const [fileNumber, setFileNumber] = useState({current: 0, total: 0});
-  const [currentFileName, setCurrentFileName] = useState('');
+  const [activeTransfers, setActiveTransfers] = useState<Record<number, {name:string; status:UploadStatus|null; compressing:boolean}>>({});
+  const [completedCount, setCompletedCount] = useState(0);
   const [isDragOver, setIsDragOver] = useState(false);
   const [shareByLink, setShareByLink] = useState(false);
   const [uploadError, setUploadError] = useState('');
@@ -88,51 +88,46 @@ export const UploadModal: React.FC<UploadModalProps> = ({
     }
 
     setIsUploading(true);
-    setTransfer(null);
+    setActiveTransfers({}); setCompletedCount(0);
     setUploadError('');
     const controller = new AbortController(); request.current = controller;
     const batch = [...files];
-    const remaining = new Set(batch);
-
-    let successCount = 0;
-    for (let i = 0; i < batch.length; i++) {
-      if (controller.signal.aborted) break;
-      let fileToUpload = prepared.current.get(batch[i]) || batch[i];
-      setCurrentFileName(fileToUpload.name);
-      setFileNumber({current: i + 1, total: batch.length});
-      setTransfer(null);
-
-      // Compress images if enabled and file is an image > 1MB
-      if (!prepared.current.has(batch[i]) && compressImages && fileToUpload.type.startsWith('image/') && fileToUpload.size > 1024 * 1024) {
-        try {
-          const options = {
-            maxSizeMB: 2,
-            maxWidthOrHeight: 1920,
-            useWebWorker: true,
-            signal: controller.signal
-          };
-          const compressed = await imageCompression(fileToUpload, options);
-          fileToUpload = new window.File([compressed], batch[i].name, {type: compressed.type, lastModified: batch[i].lastModified});
-        } catch (err) {
-          if (controller.signal.aborted) break;
-        }
-      }
-      prepared.current.set(batch[i], fileToUpload);
-
+    // Keep image decoding sequential on memory-constrained phones and notebooks.
+    let preparation:Promise<void> = Promise.resolve();
+    const prepareImage = (task:()=>Promise<File>) => {
+      const result = preparation.then(task);
+      preparation = result.then(()=>{},()=>{});
+      return result;
+    };
+    const {completed, error} = await runUploadQueue(batch, async (original, index) => {
+      let fileToUpload = prepared.current.get(original) || original;
+      const update = (status:UploadStatus|null, compressing=false) => setActiveTransfers(previous=>({...previous,[index]:{name:original.name,status,compressing}}));
+      update(null);
       try {
-        await uploadFileToScript(
-          fileToUpload,
-          eventName,
-          undefined,
-          {signal: controller.signal, shareByLink, onStatus: setTransfer}
-        );
-        successCount++;
-        remaining.delete(batch[i]);
-      } catch (err) {
-        if (!controller.signal.aborted) setUploadError(err instanceof Error ? err.message : 'Falha no envio.');
-        break; // Keep this and later files for retry; do not silently discard partial failures.
+        if (!prepared.current.has(original) && compressImages && /^image\/(?:jpeg|png|webp)$/.test(original.type) && original.size > 1024 * 1024) {
+          try {
+            fileToUpload = await prepareImage(async()=>{
+              controller.signal.throwIfAborted();
+              update(null,true);
+              const {default:imageCompression} = await import('browser-image-compression');
+              controller.signal.throwIfAborted();
+              const compressed = await imageCompression(original, {maxSizeMB:2,maxWidthOrHeight:1920,useWebWorker:true,libURL:compressionWorkerUrl,signal:controller.signal});
+              return compressed.size<original.size ? new window.File([compressed],original.name,{type:compressed.type,lastModified:original.lastModified}) : original;
+            });
+          } catch {controller.signal.throwIfAborted();}
+        }
+        controller.signal.throwIfAborted();
+        prepared.current.set(original,fileToUpload);
+        update(null);
+        await uploadFileToScript(fileToUpload,eventName,undefined,{signal:controller.signal,shareByLink,onStatus:status=>update(status)});
+        setCompletedCount(count=>count+1);
+      } finally {
+        setActiveTransfers(previous=>{const next={...previous};delete next[index];return next;});
       }
-    }
+    },controller.signal);
+    const remaining = new Set(batch.filter(file=>!completed.has(file)));
+    const successCount = completed.size;
+    if(error && !controller.signal.aborted)setUploadError(error instanceof Error?error.message:'Falha no envio.');
 
     setIsUploading(false);
     setFiles([...remaining]);
@@ -142,7 +137,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
       onSuccess();
       if (remaining.size === 0) {setShareByLink(false); onClose();}
     } else {
-      showToast(controller.signal.aborted ? 'Envio pausado. Tente novamente mantendo esta página aberta.' : 'O envio não terminou. Os arquivos continuam na lista.', 'info');
+      showToast(controller.signal.aborted ? 'Envio pausado. Toque em Enviar arquivos para retomar nesta página.' : 'O envio não terminou. Os arquivos continuam na lista.', 'info');
     }
   };
 
@@ -202,7 +197,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
                 <FileText size={17} className="shrink-0 text-blue-500"/>
                 <span className="min-w-0 flex-1 truncate text-xs font-medium" title={file.name}>{file.name}</span>
                 <span className="shrink-0 text-[11px] text-neutral-500">{file.size < 1048576 ? `${Math.ceil(file.size/1024)} KB` : `${(file.size/1048576).toFixed(1)} MB`}</span>
-                <button type="button" aria-label={`Remover ${file.name}`} disabled={isUploading} onClick={()=>removeFile(index)} className="p-1 text-neutral-500 disabled:opacity-40"><X size={15}/></button>
+                <button type="button" aria-label={`Remover ${file.name}`} disabled={isUploading} onClick={()=>removeFile(index)} className="flex h-11 w-11 shrink-0 items-center justify-center text-neutral-500 disabled:opacity-40"><X size={15}/></button>
               </li>)}
             </ul>
           </section>}
@@ -226,16 +221,17 @@ export const UploadModal: React.FC<UploadModalProps> = ({
           </label>
 
           </>}
-          {isUploading && <div role="status" className="upload-status rounded-2xl p-4 space-y-3">
-            <div className="flex items-center justify-between gap-2 text-xs font-semibold"><span>Arquivo {fileNumber.current} de {fileNumber.total}</span><Loader2 size={16} className="animate-spin text-blue-500"/></div>
-            <p className="truncate text-sm font-semibold" title={currentFileName}>{currentFileName}</p>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400">{!transfer ? 'Preparando o arquivo…' : transfer.phase === 'opening' ? 'Conectando ao Drive…' : transfer.phase === 'publishing' ? 'Transferência concluída. Disponibilizando o link…' : transfer.phase === 'complete' ? 'Arquivo disponível na biblioteca.' : 'Transferindo para o Drive'}</p>
-            {transfer?.phase === 'transferring' && <>
-              <div className="flex justify-between gap-2 text-xs tabular-nums"><span>{formatBytes(transfer.confirmedBytes)} de {formatBytes(transfer.totalBytes)}</span><strong>{Math.floor(transfer.confirmedBytes / transfer.totalBytes * 100)}%</strong></div>
-              <div role="progressbar" aria-label="Bytes confirmados pelo Drive" aria-valuemin={0} aria-valuemax={transfer.totalBytes} aria-valuenow={transfer.confirmedBytes} aria-valuetext={`${formatBytes(transfer.confirmedBytes)} de ${formatBytes(transfer.totalBytes)} confirmados`} className="h-2 rounded-full bg-blue-100 dark:bg-blue-950 overflow-hidden"><div className="h-full rounded-full bg-blue-600 transition-[width]" style={{width:`${transfer.confirmedBytes / transfer.totalBytes * 100}%`}}/></div>
-              <p className="text-[11px] text-neutral-500 dark:text-neutral-400">Confirmado pelo Drive. Atualiza a cada bloco de até 4 MB; arquivos pequenos podem concluir de uma vez.</p>
-            </>}
-            <p className="text-[11px] text-neutral-500 dark:text-neutral-400">Mantenha esta página aberta durante o envio.</p>
+          {isUploading && <div className="space-y-3">
+            <p role="status" className="text-sm font-semibold">{completedCount} de {files.length} arquivo(s) concluído(s)</p>
+            {Object.entries(activeTransfers).map(([id,item])=><div key={id} className="upload-status rounded-2xl p-4 space-y-3">
+              <div className="flex items-start justify-between gap-2"><p className="min-w-0 break-words text-sm font-semibold">{item.name}</p><Loader2 size={16} className="shrink-0 animate-spin text-blue-500"/></div>
+              <p className="text-xs text-neutral-500 dark:text-neutral-400">{item.compressing ? 'Reduzindo a foto para enviar menos dados…' : !item.status ? 'Preparando o arquivo…' : item.status.phase === 'opening' ? 'Conectando ao Drive…' : item.status.phase === 'publishing' ? 'Transferência concluída. Disponibilizando o link…' : item.status.phase === 'complete' ? 'Arquivo disponível na biblioteca.' : 'Transferindo para o Drive…'}</p>
+              {item.status?.phase === 'transferring' && <>
+                <div className="flex justify-between gap-2 text-xs tabular-nums"><span>{formatBytes(item.status.confirmedBytes)} de {formatBytes(item.status.totalBytes)}</span><strong>{Math.floor(item.status.confirmedBytes / item.status.totalBytes * 100)}%</strong></div>
+                <div role="progressbar" aria-label={`Envio de ${item.name}`} aria-valuemin={0} aria-valuemax={item.status.totalBytes} aria-valuenow={item.status.confirmedBytes} className="h-2 rounded-full bg-blue-100 dark:bg-blue-950 overflow-hidden"><div className="h-full rounded-full bg-blue-600 transition-[width]" style={{width:`${item.status.confirmedBytes/item.status.totalBytes*100}%`}}/></div>
+              </>}
+            </div>)}
+            <p className="text-xs leading-relaxed text-neutral-500 dark:text-neutral-400">Mantenha esta página aberta. Arquivos pequenos podem ser enviados em dupla; vídeos grandes usam a conexão um de cada vez.</p>
           </div>}
           {uploadError && <p role="alert" className="rounded-xl bg-rose-50 dark:bg-rose-950/30 p-3 text-xs leading-relaxed text-rose-700 dark:text-rose-300">{uploadError}</p>}
         </div>

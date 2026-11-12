@@ -61,7 +61,7 @@ input[type=checkbox]{accent-color:#2563eb;width:16px;height:16px}
 ::-webkit-scrollbar{width:7px;height:7px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:#8795aa66;border-radius:8px}
-@media(max-width:767px){.operator-strip{font-size:10px}.operator-strip button{font-size:10px;padding:5px 8px}.workspace-header .primary-button{padding:9px 12px}.workspace-header .icon-button{width:36px;min-height:38px}.workspace-dialog{border-radius:22px}.media-card button{min-width:38px;min-height:38px}.library-summary strong{font-size:22px}.workspace-dialog input:not([type=checkbox]):not([type=range]),.workspace-dialog textarea,.workspace-dialog select{font-size:16px}.workspace-dialog h2{line-height:1.35}}
+@media(max-width:767px){.operator-strip{font-size:10px}.operator-strip button{font-size:10px;padding:5px 8px}.workspace-header .primary-button{padding:9px 12px}.workspace-header .icon-button{width:44px;min-height:44px}.workspace-header .workspace-search{font-size:16px}.library-intro{padding:8px 0 12px;gap:12px}.library-summary{gap:16px}.workspace-dialog{border-radius:22px}.media-card button{min-width:44px;min-height:44px}.library-summary strong{font-size:22px}.workspace-dialog input:not([type=checkbox]):not([type=range]),.workspace-dialog textarea,.workspace-dialog select{font-size:16px}.workspace-dialog h2{line-height:1.35}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important;animation-iteration-count:1!important}}
 .toast-card{background:var(--surface);color:var(--ink);border:1px solid var(--line)}
 

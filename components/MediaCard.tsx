@@ -93,6 +93,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({
                 isImgLoading ? 'opacity-0 scale-95' : 'opacity-90 group-hover:opacity-100 scale-100'
               }`} 
               loading="lazy"
+              decoding="async"
             />
             {item.type === 'video' && !isImgLoading && (
               <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/40 transition-colors z-20">
@@ -124,8 +125,11 @@ export const MediaCard: React.FC<MediaCardProps> = ({
         </span>
 
         {/* Selection Box Corner Button */}
-        <div 
-          className="absolute top-2.5 right-2.5 z-20"
+        <button
+          type="button"
+          aria-label={`Selecionar ${item.name}`}
+          aria-pressed={isSelected}
+          className="absolute top-1 right-1 z-20 rounded-xl"
           onClick={(e) => {
             e.stopPropagation();
             onToggle(item.id, e);
@@ -140,7 +144,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({
               <div className="w-4 h-4 rounded-full border border-white/80" />
             </div>
           )}
-        </div>
+        </button>
 
         {/* Quick View Button Hover Overlay */}
         <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 pointer-events-none">
