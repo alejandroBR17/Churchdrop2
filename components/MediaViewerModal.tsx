@@ -1,3 +1,4 @@
+import {ImagePreview} from './ImagePreview';
 import {useBodyScrollLock} from '../hooks/useBodyScrollLock';
 import React, { useState, useEffect, useRef } from 'react';
 import { 
@@ -31,7 +32,6 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
   // Image Zoom & Rotate Controls
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
-  const [isFullscreen, setIsFullscreen] = useState(false);
   const [copiedText, setCopiedText] = useState(false);
   const [videoError, setVideoError] = useState(false);
   
@@ -50,22 +50,25 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
   useEffect(() => {
     if (!item) return;
     // Reset state on media item change
-    setZoom(1);
-    setRotation(0);
     setVideoError(false);
     setIsPlaying(false);
     setAudioProgress(0);
     setCopiedText(false);
 
+  }, [item?.id]);
+  useEffect(() => {
+    if(!item)return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
+      if (item.type === 'image' && zoom > 1) return;
       if (e.key === 'ArrowRight' && hasNext) onNext();
       if (e.key === 'ArrowLeft' && hasPrev) onPrev();
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [item, hasNext, hasPrev]);
+  }, [item, hasNext, hasPrev, zoom, onClose, onNext, onPrev]);
+  useEffect(()=>{setZoom(1);setRotation(0);setTouchStartX(0);setTouchEndX(0);},[item?.id]);
   useBodyScrollLock(Boolean(item));
   if (!item) return null;
 
@@ -78,15 +81,17 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
   };
 
   const handleTouchStart = (e: React.TouchEvent) => {
-    setTouchStartX(e.targetTouches[0].clientX);
+    if(e.targetTouches.length!==1 || (item.type==='image'&&zoom>1)){setTouchStartX(0);setTouchEndX(0);return;}
+    setTouchEndX(0);setTouchStartX(e.targetTouches[0].clientX);
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
+    if(e.targetTouches.length!==1 || (item.type==='image'&&zoom>1)){setTouchStartX(0);setTouchEndX(0);return;}
     setTouchEndX(e.targetTouches[0].clientX);
   };
 
   const handleTouchEnd = () => {
-    if (!touchStartX || !touchEndX) return;
+    if (!touchStartX || !touchEndX || (item.type==='image'&&zoom>1)) return;
     const diffX = touchStartX - touchEndX;
     if (diffX > 50 && hasNext) onNext();
     if (diffX < -50 && hasPrev) onPrev();
@@ -112,20 +117,20 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
   };
 
   return (
-    <div role="dialog" aria-modal="true" aria-label={`Visualizar ${item.name}`} className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-md animate-in fade-in duration-200">
+    <div role="dialog" aria-modal="true" aria-label={`Visualizar ${item.name}`} className="media-viewer fixed inset-0 z-[100] flex flex-col bg-black/95 backdrop-blur-md animate-in fade-in duration-200">
       
       {/* Top Bar Navigation */}
-      <div className="absolute top-0 inset-x-0 z-20 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 p-4 bg-gradient-to-b from-black/80 to-transparent text-white">
+      <div className="relative shrink-0 z-20 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 p-3 bg-gradient-to-b from-black/80 to-transparent text-white">
         <div className="flex items-center gap-3 min-w-0 basis-full sm:basis-auto sm:flex-1 pr-4">
           <span className="text-xs font-bold uppercase tracking-widest text-univer-gold px-2.5 py-1 bg-white/10 rounded-full border border-white/10 shrink-0">
-            {item.type}
+            {{image:'Imagem',video:'Vídeo',audio:'Áudio',pdf:'PDF',text:'Texto'}[item.type]}
           </span>
           <h2 className="text-sm md:text-base font-bold truncate max-w-md" title={item.name}>
             {item.name}
           </h2>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 shrink-0 ml-auto">
+        <div className="flex w-full sm:w-auto flex-wrap justify-end items-center gap-1 sm:gap-2 shrink-0 ml-auto">
           {/* Zoom controls for images */}
           {item.type === 'image' && (
             <>
@@ -143,6 +148,10 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
               >
                 <ZoomIn size={18} />
               </button>
+              <button
+                onClick={()=>{setZoom(1);setRotation(0);}}
+                className="p-2 hover:bg-white/20 rounded-lg text-white/80 hover:text-white"
+                title="Ajustar imagem à tela"><Maximize2 size={18}/></button>
               <button 
                 onClick={() => setRotation(prev => (prev + 90) % 360)}
                 className="p-2 hover:bg-white/20 rounded-lg text-white/80 hover:text-white transition-colors"
@@ -177,7 +186,7 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
 
           <button 
             onClick={onClose}
-            className="p-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white rounded-lg transition-colors ml-2"
+            className="p-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white rounded-lg transition-colors sm:ml-2"
             title="Fechar (ESC)"
           >
             <X size={20} />
@@ -187,7 +196,7 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
 
       {/* Main Content Viewer Canvas */}
       <div 
-        className="w-full h-full flex items-center justify-center p-4 pt-28 sm:pt-16 pb-16 overflow-hidden relative"
+        className="w-full flex-1 min-h-0 flex items-center justify-center p-2 sm:p-3 overflow-hidden relative"
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
@@ -195,17 +204,7 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
         
         {/* IMAGE VIEWER */}
         {item.type === 'image' && (
-          <div className="relative max-w-full max-h-full flex items-center justify-center overflow-auto p-4">
-            <img 
-              src={item.url} 
-              alt={item.name}
-              style={{
-                transform: `scale(${zoom}) rotate(${rotation}deg)`,
-                transition: 'transform 0.2s ease-out'
-              }}
-              className="max-w-full max-h-[80vh] object-contain select-none drop-shadow-2xl rounded-lg"
-            />
-          </div>
+          <ImagePreview key={item.id} src={item.url} name={item.name} zoom={zoom} rotation={rotation}/>
         )}
 
         {/* VIDEO VIEWER */}
@@ -357,7 +356,7 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
 
         {/* PDF VIEWER */}
         {item.type === 'pdf' && (
-          <div className="w-full max-w-4xl h-[80vh] bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden shadow-2xl flex flex-col">
+          <div className="w-full max-w-4xl h-full bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden shadow-2xl flex flex-col">
             <iframe 
               src={`https://docs.google.com/viewer?url=${encodeURIComponent(item.downloadUrl || item.url)}&embedded=true`}
               className="w-full h-full border-0"
@@ -366,29 +365,12 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
           </div>
         )}
 
-        {/* Navigation Arrows */}
-        {hasPrev && (
-          <button 
-            onClick={onPrev}
-            className="absolute left-4 p-3 bg-black/60 hover:bg-univer-blue text-white rounded-full transition-all backdrop-blur-md shadow-xl active:scale-95 z-20"
-            title="Anterior (Seta Esquerda)"
-          >
-            <ChevronLeft size={28} />
-          </button>
-        )}
-
-        {hasNext && (
-          <button 
-            onClick={onNext}
-            className="absolute right-4 p-3 bg-black/60 hover:bg-univer-blue text-white rounded-full transition-all backdrop-blur-md shadow-xl active:scale-95 z-20"
-            title="Próximo (Seta Direita)"
-          >
-            <ChevronRight size={28} />
-          </button>
-        )}
 
       </div>
-
+      {(hasPrev||hasNext)&&<nav aria-label="Navegação entre arquivos" className="flex shrink-0 items-center justify-between gap-3 bg-black px-3 py-2 text-white">
+        <button type="button" onClick={onPrev} disabled={!hasPrev} title="Anterior (Seta Esquerda)" className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs disabled:opacity-30"><ChevronLeft size={22}/>Anterior</button>
+        <button type="button" onClick={onNext} disabled={!hasNext} title="Próximo (Seta Direita)" className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs disabled:opacity-30">Próximo<ChevronRight size={22}/></button>
+      </nav>}
     </div>
   );
 };

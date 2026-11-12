@@ -113,3 +113,10 @@ Holyrics está disponível diretamente na barra inferior do celular e no cabeça
 A fila envia até dois arquivos de no máximo 8 MiB em paralelo; arquivos maiores usam a conexão sozinhos. Se um envio falhar, a fila aguarda o outro envio ativo terminar e mantém somente os arquivos ainda não confirmados para nova tentativa. Pausar mantém as sessões em memória; a retomada consulta a posição no Drive. Recarregar a página ainda não recupera uma transferência incompleta.
 
 A preparação de fotos JPEG/PNG/WebP é sequencial para limitar memória. O compactador carrega apenas quando necessário e seu worker é servido pelo próprio app. O original é mantido se o resultado não ficar menor; GIF e HEIC seguem no formato original. Isso reduz trabalho de preparação, mas não comprime vídeos nem garante uma velocidade de rede específica.
+
+
+## Visualização de imagens
+
+O visualizador enquadra a imagem em toda a área disponível, inclusive quando a miniatura é menor, sem distorcer a proporção. Para URLs de miniatura conhecidas do Google, solicita uma prévia de até 2048 pixels e retorna à URL da biblioteca se ela falhar; isso não garante a resolução do arquivo original. As miniaturas dos cartões continuam leves.
+
+Zoom cria uma área rolável, com arraste pelo mouse e rolagem no celular. Ajustar imagem à tela restaura o enquadramento; a rotação considera os limites disponíveis. Arrastar uma imagem ampliada não muda o arquivo da galeria. As setas de navegação ficam fora da imagem e falhas de carregamento mostram alternativas de download/Drive.
