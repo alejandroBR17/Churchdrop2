@@ -31,7 +31,7 @@ export function PersonalAccessModal({onClose}:{onClose:()=>void}) {
     if(!busy&&!panel.current?.contains(document.activeElement))panel.current?.querySelector<HTMLButtonElement>('button')?.focus();
   },[busy]);
   async function change(action:'createLink'|'revokeLink') {
-    if(busy||code.length!==10||!confirm)return;
+    if(busy||code.length<6||code.length>64||!confirm)return;
     const controller=new AbortController();control.current=controller;
     setBusy(true);setError('');setNotice('');setCopied(false);
     setInfo(previous=>previous?{...previous,url:undefined}:previous);
@@ -44,7 +44,7 @@ export function PersonalAccessModal({onClose}:{onClose:()=>void}) {
         setInfo(result);setNotice('Link criado. Copie e guarde antes de fechar.');
       } else {
         if(result.revoked!==true)throw new Error('Não foi possível confirmar o cancelamento. Confira seu link novamente.');
-        setInfo({active:false});setNotice('Link cancelado. O acesso por código continua disponível.');
+        setInfo({active:false});setNotice('Link cancelado. O acesso por senha continua disponível.');
       }
       setCode('');setConfirm(false);
     } catch(cause) {
@@ -71,7 +71,7 @@ export function PersonalAccessModal({onClose}:{onClose:()=>void}) {
     <div ref={panel} role="dialog" aria-modal="true" aria-labelledby="personal-access-title" className="workspace-dialog flex max-h-[90dvh] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-neutral-200 bg-white text-neutral-900 shadow-2xl dark:border-neutral-700 dark:bg-neutral-900 dark:text-white">
       <header className="flex shrink-0 items-center gap-3 border-b border-neutral-200 p-5 dark:border-neutral-800">
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-500/15 text-blue-500"><Link2 size={21}/></span>
-        <div className="min-w-0 flex-1"><h2 id="personal-access-title" className="font-bold">Meu link de acesso</h2><p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">Abra no celular ou no PC, sem digitar o código.</p></div>
+        <div className="min-w-0 flex-1"><h2 id="personal-access-title" className="font-bold">Meu link de acesso</h2><p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">Abra no celular ou no PC, sem digitar a senha.</p></div>
         <button onClick={onClose} aria-label="Fechar link de acesso" className="rounded-xl p-2 text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800"><X size={20}/></button>
       </header>
       <div className="space-y-4 overflow-y-auto p-5">
@@ -85,11 +85,11 @@ export function PersonalAccessModal({onClose}:{onClose:()=>void}) {
           </div>}
           <details open={!info.url} className="space-y-3 border-t border-neutral-200 pt-4 dark:border-neutral-800">
             <summary className="cursor-pointer text-sm font-medium">{info.active?'Substituir ou cancelar o link':'Criar link válido por 90 dias'}</summary>
-            <label className="block text-sm">Confirme seu código de acesso<input type="password" name="access-link-code" inputMode="numeric" autoComplete="off" value={code} maxLength={10} onChange={event=>setCode(event.target.value.replace(/\D/g,''))} className="mt-2 w-full rounded-xl border border-neutral-300 bg-white p-3 tracking-widest outline-none focus:ring-2 focus:ring-blue-500 dark:border-neutral-700 dark:bg-neutral-950"/></label>
+            <label className="block text-sm">Confirme sua senha de acesso<input type="password" name="access-link-code" autoComplete="off" value={code} minLength={6} maxLength={64} onChange={event=>setCode(event.target.value)} className="mt-2 w-full rounded-xl border border-neutral-300 bg-white p-3 tracking-widest outline-none focus:ring-2 focus:ring-blue-500 dark:border-neutral-700 dark:bg-neutral-950"/></label>
             <label className="flex items-start gap-2 text-xs leading-relaxed text-neutral-500 dark:text-neutral-400"><input type="checkbox" checked={confirm} onChange={event=>setConfirm(event.target.checked)} className="mt-0.5"/>{info.active?'Entendo que isso cancela o link anterior e encerra as sessões abertas por ele.':'Entendo que qualquer pessoa com este link poderá acessar e gerenciar as mídias.'}</label>
             <div className="flex flex-wrap gap-2">
-              <button disabled={busy||code.length!==10||!confirm} onClick={()=>change('createLink')} className="flex-1 rounded-xl bg-blue-600 px-3 py-3 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-40">{busy?'Aguarde…':info.active?'Criar outro link':'Criar meu link'}</button>
-              {info.active&&<button disabled={busy||code.length!==10||!confirm} onClick={()=>change('revokeLink')} className="rounded-xl border border-rose-300 px-3 py-3 text-sm font-medium text-rose-700 disabled:opacity-40 dark:border-rose-900 dark:text-rose-300">Cancelar link</button>}
+              <button disabled={busy||code.length<6||code.length>64||!confirm} onClick={()=>change('createLink')} className="flex-1 rounded-xl bg-blue-600 px-3 py-3 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-40">{busy?'Aguarde…':info.active?'Criar outro link':'Criar meu link'}</button>
+              {info.active&&<button disabled={busy||code.length<6||code.length>64||!confirm} onClick={()=>change('revokeLink')} className="rounded-xl border border-rose-300 px-3 py-3 text-sm font-medium text-rose-700 disabled:opacity-40 dark:border-rose-900 dark:text-rose-300">Cancelar link</button>}
             </div>
           </details>
         </>}

@@ -26,7 +26,7 @@ export async function requireAccess(request, headers, {environment = process.env
   if (environment.UNIVER_DRIVE_ENABLED !== 'true') throw new HttpError(503, 'A integração ainda está em preparação.');
   const session = await getIronSession(webCookies(request, headers), sessionOptions(environment));
   if (session.authorized !== true || !Number.isSafeInteger(session.expiresAt) || session.expiresAt <= now() || session.expiresAt > now() + MAX_TTL * 1000) {
-    throw new HttpError(401, 'Entre com seu código para continuar.');
+    throw new HttpError(401, 'Entre com sua senha para continuar.');
   }
   await verifyLinkedSession(request, session, {environment, now, drive});
   return session;
@@ -34,12 +34,12 @@ export async function requireAccess(request, headers, {environment = process.env
 
 export function createAccessHandler({environment = process.env, drive = callDrive, now = Date.now} = {}) {
   async function verifyCode(input, request, status = 401) {
-    if (typeof input.code !== 'string' || !/^\d{10}$/.test(input.code)) throw new HttpError(400, 'Informe os 10 números do código de acesso.');
+    if (typeof input.code !== 'string' || (input.code.length < 6 || input.code.length > 64)) throw new HttpError(400, 'Informe uma senha de 6 a 64 caracteres.');
     const budget = await drive({action:'claimLoginAttempt'}, {environment, signal:request.signal});
     if (budget.allowed !== true) throw new HttpError(429, 'Muitas tentativas. Aguarde alguns minutos.', Math.min(600, Math.max(1, Number(budget.retryAfterSeconds) || 600)));
     const [, salt, expected] = environment.UNIVER_ACCESS_CODE_HASH.split(':');
     const actual = await derive(input.code, Buffer.from(salt, 'hex'), 64);
-    if (!timingSafeEqual(actual, Buffer.from(expected, 'hex'))) throw new HttpError(status, 'O código não confere. Verifique e tente novamente.');
+    if (!timingSafeEqual(actual, Buffer.from(expected, 'hex'))) throw new HttpError(status, 'A senha não confere. Verifique e tente novamente.');
   }
   return async function handle(request) {
     const headers = new Headers();
@@ -95,8 +95,8 @@ export function createAccessHandler({environment = process.env, drive = callDriv
         await session.save();
         return json({success: true, remembered: true, expiresAt: session.expiresAt}, 200, headers);
       }
-      if (typeof input.code !== 'string' || !/^\d{10}$/.test(input.code) || typeof input.remember !== 'boolean') {
-        throw new HttpError(400, 'Informe os 10 números do código de acesso.');
+      if (typeof input.code !== 'string' || (input.code.length < 6 || input.code.length > 64) || typeof input.remember !== 'boolean') {
+        throw new HttpError(400, 'Informe uma senha de 6 a 64 caracteres.');
       }
       await verifyCode(input, request);
       session.updateConfig(sessionOptions(environment, input.remember));

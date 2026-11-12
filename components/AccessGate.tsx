@@ -93,19 +93,19 @@ export function AccessGate({children}: {children: React.ReactNode}) {
       <h1 className="text-2xl font-bold mb-3">{state === 'preparing' ? 'Preparando seu novo espaço' : 'Suas mídias, no lugar certo'}</h1>
       {state === 'checking' ? <p role="status" className="flex items-center gap-2 text-neutral-400"><Loader2 size={18} className="animate-spin"/> Verificando acesso…</p> : state === 'locked' ? <form onSubmit={enter} className="space-y-5">
         {typeof window !== 'undefined' && window.location.hostname.endsWith('.vercel.app') && window.location.hostname !== 'churchdrop2.vercel.app' && <a href="https://churchdrop2.vercel.app/" className="block rounded-xl border border-blue-800 bg-blue-950/40 p-3 text-sm text-blue-200">Usar o endereço fixo do app →<span className="mt-1 block text-xs text-neutral-400">O acesso salvo em links de prévia não passa para outro endereço.</span></a>}
-        <p className="text-sm leading-relaxed text-neutral-400">Use o código de operador para enviar e organizar os materiais. Não precisa entrar com uma conta Google.</p>
-        <label className="block text-sm font-medium">Código de acesso
+        <p className="text-sm leading-relaxed text-neutral-400">Use a senha de acesso para enviar e organizar os materiais. Não precisa entrar com uma conta Google.</p>
+        <label className="block text-sm font-medium">Senha de acesso
           <input type="hidden" name="username" value="operador" autoComplete="username"/>
-          <input autoFocus name="password" type="password" inputMode="numeric" autoComplete="current-password" pattern="[0-9]{10}" maxLength={10} required value={code} onChange={e => setCode(e.target.value.replace(/\D/g, ''))} className="mt-2 w-full min-w-0 rounded-xl border border-neutral-700 bg-neutral-950 p-3 text-lg tracking-widest focus:outline-none focus:ring-2 focus:ring-blue-500" aria-describedby="code-help"/>
+          <input autoFocus name="password" type="password" autoComplete="current-password" minLength={6} maxLength={64} required value={code} onChange={e => setCode(e.target.value)} className="mt-2 w-full min-w-0 rounded-xl border border-neutral-700 bg-neutral-950 p-3 text-lg tracking-widest focus:outline-none focus:ring-2 focus:ring-blue-500" aria-describedby="password-help"/>
         </label>
-        <p id="code-help" className="text-xs text-neutral-400">10 números. Peça o código ao responsável pelo Univer Mídia.</p>
+        <p id="password-help" className="text-xs text-neutral-400">De 6 a 64 caracteres. Pode usar letras, números ou símbolos.</p>
         <label className="flex items-start gap-3 text-sm text-neutral-300"><input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} className="mt-1"/><span>Este aparelho é meu · lembrar por 7 dias<span className="block mt-1 text-xs text-neutral-500">Atualizações no link fixo mantêm o acesso. Em aparelho emprestado, deixe desmarcado e use Sair ao terminar.</span></span></label>
         {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
-        <button disabled={busy || code.length !== 10} className="w-full rounded-xl bg-blue-600 hover:bg-blue-500 px-4 py-3 font-semibold disabled:opacity-50">{busy ? 'Verificando…' : 'Entrar'}</button>
+        <button disabled={busy || code.length < 6 || code.length > 64} className="w-full rounded-xl bg-blue-600 hover:bg-blue-500 px-4 py-3 font-semibold disabled:opacity-50">{busy ? 'Verificando…' : 'Entrar'}</button>
       </form> : <>
         <p className="text-sm leading-relaxed text-neutral-400">{state === 'preparing' ? 'Estamos conectando o acesso seguro e o novo armazenamento. Nenhum arquivo antigo será alterado.' : error}</p>
         <button onClick={check} className="mt-6 w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold">Verificar novamente</button>
-        {state==='error'&&<button onClick={()=>{clearAccessLink();setError('');setState('locked');}} className="mt-3 w-full rounded-xl border border-neutral-700 px-4 py-3 text-sm">Entrar com o código</button>}
+        {state==='error'&&<button onClick={()=>{clearAccessLink();setError('');setState('locked');}} className="mt-3 w-full rounded-xl border border-neutral-700 px-4 py-3 text-sm">Entrar com a senha</button>}
       </>}
     </section>
   </main>;

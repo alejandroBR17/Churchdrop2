@@ -4,6 +4,12 @@ Aplicação React/Vite para organizar e transferir mídias usadas na igreja. Rep
 
 Produção autorizada pelo responsável em 18/10/2026: https://churchdrop2.vercel.app/ . A biblioteca exige o código privado de operador; o projeto antigo churchdrop.vercel.app permanece separado. A configuração assinada do novo Drive está ativa em produção e Preview, sem migrar o acervo legado.
 
+## Senha de acesso
+
+A senha aceita de 6 a 64 caracteres, incluindo letras, números e símbolos, sem exigir uma combinação específica. Maiúsculas, acentos e espaços são preservados. O código numérico anterior continua aceito como senha enquanto o hash configurado não for trocado.
+
+Para definir uma nova senha, gere localmente um hash scrypt com sal aleatório de 16 bytes e saída de 64 bytes, no formato `scrypt:<sal hexadecimal>:<hash hexadecimal>`. Atualize o valor sensível `UNIVER_ACCESS_CODE_HASH` nas configurações do projeto Vercel e faça uma nova implantação do ambiente desejado. O nome da variável e o campo interno `code` foram mantidos para compatibilidade; nunca coloque a senha no repositório ou em variáveis públicas `VITE_*`. A troca do hash encerra sessões e invalida links pessoais anteriores. Alterar apenas a interface não define uma nova senha.
+
 ## Manter o acesso neste aparelho
 
 Use o endereço fixo de produção. Sessões são do navegador/endereço: links diferentes de Preview não compartilham o acesso. No login, marque Este aparelho é meu para manter a sessão por sete dias; se já estiver conectado temporariamente, Lembrar 7 dias salva a sessão atual sem reenviar o código. A barra mostra a data de validade. Atualizações com as mesmas chaves e domínio mantêm a sessão; expiração, limpeza dos dados do navegador, Sair e troca de código/chaves continuam encerrando o acesso.

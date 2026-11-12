@@ -183,3 +183,35 @@ test('media API prefers the official browser download link only for the same fil
     assert.equal(link.hostname,provided.includes('drive.usercontent.google.com')?'drive.usercontent.google.com':'drive.google.com');
   }
 });
+
+
+test('short passwords accept letters, accents, symbols and spaces without normalization', async () => {
+  for (const password of ['Culto!', 'Fé #12', ' Abc! ', 'x'.repeat(64)]) {
+    const passwordEnvironment = {...environment,
+      UNIVER_ACCESS_CODE_HASH: `scrypt:${salt.toString('hex')}:${scryptSync(password, salt, 64).toString('hex')}`};
+    const handler = createAccessHandler({environment: passwordEnvironment, drive: async () => ({allowed: true})});
+    const login = await handler(request(undefined, 'POST', {code: password, remember: true}));
+    assert.equal(login.status, 200);
+    assert.ok(login.headers.get('set-cookie').includes('Max-Age=604740'));
+    const session = await handler(request(undefined, 'GET', undefined, {cookie: cookie(login)}));
+    assert.equal((await session.json()).authenticated, true);
+    const wrong = await handler(request(undefined, 'POST', {code: password === 'Culto!' ? 'culto!' : 'errada', remember: true}));
+    assert.equal(wrong.status, 401);
+    assert.equal(wrong.headers.get('set-cookie'), null);
+  }
+});
+
+test('password size and type are rejected before consuming login attempts, including link confirmations', async () => {
+  let calls = 0;
+  const handler = createAccessHandler({environment, drive: async () => {calls++; return {allowed: true};}});
+  const login = await handler(request(undefined, 'POST', {code, remember: false}));
+  calls = 0;
+  for (const invalid of ['', 'abcde', 'x'.repeat(65), 123456, null]) {
+    for (const action of [undefined, 'createLink', 'revokeLink']) {
+      const response = await handler(request(undefined, 'POST', {code: invalid, remember: false, action}, {cookie: cookie(login)}));
+      assert.equal(response.status, 400);
+      assert.equal(response.headers.get('set-cookie'), null);
+    }
+  }
+  assert.equal(calls, 0);
+});

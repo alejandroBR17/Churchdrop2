@@ -8,7 +8,7 @@ import {createMediaHandler} from '../server/mediaApi.mjs';
 import {signedEnvelope} from '../server/driveBridge.mjs';
 
 const source=readFileSync(new URL('../backend/drive/Code.gs',import.meta.url),'utf8');
-const code='0123456789',salt=Buffer.alloc(16,3),origin='https://app.example';
+const code='Culto!',salt=Buffer.alloc(16,3),origin='https://app.example';
 const environment={UNIVER_DRIVE_ENABLED:'true',UNIVER_DRIVE_SERVER_SECRET:'isolated-link-secret-01234567890123456789',
   UNIVER_ACCESS_CODE_HASH:`scrypt:${salt.toString('hex')}:${scryptSync(code,salt,64).toString('hex')}`};
 const request=(body,cookie,base=origin,method='POST',headers={})=>new Request(base+'/api/session',{
