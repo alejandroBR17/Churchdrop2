@@ -202,16 +202,12 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [items, searchTerm, activeFilter, resolvedDay]);
 
-  // Filter & Search Logic
-  const filteredItems = useMemo(() => {
-    return dayItems.filter(item => {
-      const matchesFilter = activeFilter === 'all' || item.type === activeFilter;
-      const matchesSearch = !searchTerm.trim() || 
-        item.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-        (item.eventName && item.eventName.toLowerCase().includes(searchTerm.toLowerCase()));
-      return matchesFilter && matchesSearch;
-    });
-  }, [dayItems, activeFilter, searchTerm]);
+  // Search and type counters use the same selected-day scope.
+  const searchItems = useMemo(() => {
+    const query=searchTerm.trim().toLocaleLowerCase('pt-BR');
+    return dayItems.filter(item=>!query || item.name.toLocaleLowerCase('pt-BR').includes(query) || item.eventName?.toLocaleLowerCase('pt-BR').includes(query));
+  },[dayItems,searchTerm]);
+  const filteredItems = useMemo(()=>searchItems.filter(item=>activeFilter==='all'||item.type===activeFilter),[searchItems,activeFilter]);
   useEffect(()=>{
     const visible = new Set(filteredItems.map(item=>item.id));
     setSelectedIds(previous=>previous.filter(id=>visible.has(id)));
@@ -220,14 +216,14 @@ export default function App() {
   // Counts by type
   const counts = useMemo(() => {
     return {
-      all: dayItems.length,
-      video: dayItems.filter(i => i.type === 'video').length,
-      image: dayItems.filter(i => i.type === 'image').length,
-      pdf: dayItems.filter(i => i.type === 'pdf').length,
-      audio: dayItems.filter(i => i.type === 'audio').length,
-      text: dayItems.filter(i => i.type === 'text').length,
+      all: searchItems.length,
+      video: searchItems.filter(i => i.type === 'video').length,
+      image: searchItems.filter(i => i.type === 'image').length,
+      pdf: searchItems.filter(i => i.type === 'pdf').length,
+      audio: searchItems.filter(i => i.type === 'audio').length,
+      text: searchItems.filter(i => i.type === 'text').length,
     };
-  }, [dayItems]);
+  }, [searchItems]);
 
   // Grouping by Service/Event Name
   const groupedItems = useMemo(() => {
@@ -479,7 +475,7 @@ export default function App() {
           
           <section className="library-intro mb-4 sm:mb-7 flex flex-wrap items-end justify-between gap-5">
             <div><p className="eyebrow mb-2 hidden sm:block">Organize. Compartilhe. Projete.</p><h1 className="text-2xl sm:text-4xl font-bold tracking-tight">Sua biblioteca<span className="text-blue-500">.</span></h1><p className="hidden sm:block mt-3 text-sm text-neutral-500 dark:text-neutral-400 max-w-md leading-relaxed">Os materiais da igreja, prontos para encontrar e levar à projeção.</p></div>
-            <div className="library-summary flex gap-6"><div><strong>{items.length}</strong><span>arquivos</span></div><div><strong>{Object.keys(groupItemsByEvent(items)).length}</strong><span>eventos e pastas</span></div></div>
+            <div className="library-summary flex gap-6" role="group" aria-label="Resumo dos resultados"><div><strong>{filteredItems.length}</strong><span>{filteredItems.length===1?'arquivo':'arquivos'}</span></div><div><strong>{sortedEventNames.length}</strong><span>{sortedEventNames.length===1?'evento':'eventos'}</span></div></div>
           </section>
           <section aria-label="Arquivos por dia" className="mb-5 flex flex-wrap items-end gap-3 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4">
             <label className="min-w-0 flex-1 text-xs font-semibold">Dia de envio
@@ -490,7 +486,10 @@ export default function App() {
               </select>
             </label>
             <button type="button" disabled={!filteredItems.length || Boolean(zipProgress)} onClick={handleSelectAll} className="rounded-xl bg-blue-600 px-4 py-3 text-xs font-semibold text-white disabled:opacity-40">{resolvedDay ? 'Selecionar arquivos deste dia' : 'Selecionar resultados'}</button>
-            <p className="w-full text-xs text-neutral-500">{filteredItems.length} arquivo(s) nos filtros atuais. Datas pelo horário de Brasília.</p>
+            <div className="w-full space-y-2">
+              <p role="status" className="text-xs leading-relaxed text-neutral-500">Mostrando {filteredItems.length} de {items.length} arquivos nos filtros atuais. {resolvedDay ? `Dia ${resolvedDay.split('-').reverse().join('/')}.` : 'Todos os dias.'}</p>
+              {items.length>0 && (resolvedDay || activeFilter!=='all' || searchTerm.trim()) && <button type="button" disabled={Boolean(zipProgress)} onClick={()=>{setSelectedDay('all');setActiveFilter('all');setSearchTerm('');setSelectedIds([]);setCollapsedGroups({});}} className="secondary-button w-full sm:w-auto disabled:opacity-40">Mostrar todos os arquivos ({items.length})</button>}
+            </div>
           </section>
           {/* Category Filter Pills (Mobile Scrollable) */}
           <div className="category-tabs flex items-center gap-2 overflow-x-auto pb-3 mb-6 md:hidden custom-scrollbar">

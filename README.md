@@ -120,3 +120,8 @@ A preparação de fotos JPEG/PNG/WebP é sequencial para limitar memória. O com
 O visualizador enquadra a imagem em toda a área disponível, inclusive quando a miniatura é menor, sem distorcer a proporção. Para URLs de miniatura conhecidas do Google, solicita uma prévia de até 2048 pixels e retorna à URL da biblioteca se ela falhar; isso não garante a resolução do arquivo original. As miniaturas dos cartões continuam leves.
 
 Zoom cria uma área rolável, com arraste pelo mouse e rolagem no celular. Ajustar imagem à tela restaura o enquadramento; a rotação considera os limites disponíveis. Arrastar uma imagem ampliada não muda o arquivo da galeria. As setas de navegação ficam fora da imagem e falhas de carregamento mostram alternativas de download/Drive.
+
+
+## Contagem e filtros da biblioteca
+
+O resumo mostra arquivos e eventos dos resultados filtrados, acompanhado de Mostrando X de Y arquivos. A abertura continua no dia de envio mais recente; Mostrar todos os arquivos limpa dia, tipo e busca, remove a seleção e expande os grupos. Contadores de tipo consideram o dia e a busca ativos. Nenhuma dessas ações altera arquivos no Drive.
