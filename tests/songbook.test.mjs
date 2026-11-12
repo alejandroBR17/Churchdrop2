@@ -94,3 +94,19 @@ test('instruction recognition does not strip ordinary lyric lines containing mus
  assert.ok(songs[0].lyrics.includes('Eu canto o refrão da esperança'));
  assert.ok(songs[0].lyrics.includes('O som da bateria anuncia alegria'));
 });
+
+
+test('the song preparation used by the modal defaults to two-line slides for each song',()=>{
+ const {songs}=prepareSongs('🔴 Primeira canção\n\nEu cantarei um verso\nE cantarei mais um\nTambém cantarei o terceiro\nO quarto vem aqui\nA última linha\n\n🔵 Outra canção\n\nEu seguirei cantando\nE seguirei louvando\nMais uma linha');
+ assert.equal(songs.length,2);
+ assert.equal(songs[0].title,'Primeira canção');
+ assert.equal(songs[0].lyrics,'Eu cantarei um verso\nE cantarei mais um\n\nTambém cantarei o terceiro\nO quarto vem aqui\n\nA última linha');
+ assert.equal(songs[1].lyrics,'Eu seguirei cantando\nE seguirei louvando\n\nMais uma linha');
+});
+
+test('two-line slides keep stanza and section boundaries without inventing or repeating lines',()=>{
+ const input='Canção\n\nEu canto sozinho\n\nEu canto o refrão\nTu és meu Senhor\nNós vamos cantar\n[Refrão]\nEu creio em Ti\nEu creio em Ti';
+ const {songs}=prepareSongs(input);
+ assert.equal(songs[0].lyrics,'Eu canto sozinho\n\nEu canto o refrão\nTu és meu Senhor\n\nNós vamos cantar\n\nEu creio em Ti\nEu creio em Ti');
+ assert.equal(prepareSongs('Canção\n\nEu canto\nTu cantas\nNós cantamos',{linesPerSlide:0}).songs[0].lyrics,'Eu canto\nTu cantas\nNós cantamos');
+});

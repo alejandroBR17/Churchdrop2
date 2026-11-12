@@ -38,7 +38,7 @@ export function prepareSongs(input:string, options:FormatterOptions={}):{songs:P
     // Only the dedicated line immediately below a song title can be an unlabelled credit.
     const author=chunk[1] && authorBelowTitle(chunk[1]) ? 2 : undefined;
     if(author && options.removeCredits!==false && overrides[author]===undefined)overrides[author]='remove';
-    const result=formatLyrics(chunk.join('\n'),{...options,firstLineIsTitle:true,uppercaseTitle:false,linesPerSlide:0,overrides});
+    const result=formatLyrics(chunk.join('\n'),{...options,firstLineIsTitle:true,uppercaseTitle:false,linesPerSlide:options.linesPerSlide??2,overrides});
     const split=result.text.indexOf('\n\n');
     const title=split<0?result.text:result.text.slice(0,split);
     const lyrics=split<0?'':result.text.slice(split+2);
