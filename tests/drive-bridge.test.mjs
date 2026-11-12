@@ -73,3 +73,18 @@ test('interrupted write is not retried blindly and timeout/cancellation release 
   const controller = new AbortController(); controller.abort();
   await assert.rejects(callDrive({action: 'list'}, {environment, signal: controller.signal}), {name: 'AbortError'});
 });
+
+
+test('diagnostics distinguish upstream stages without retaining sensitive response content', async () => {
+  for (const [fetcher, stage, status] of [
+    [async () => {throw Error(secret);}, 'request', null],
+    [async () => new Response(secret, {status: 403}), 'http-response', 403],
+    [async () => new Response(secret), 'response-json', 200],
+    [async () => Response.json({status:'error', message:secret}), 'response-contract', 200],
+  ]) {
+    await assert.rejects(callDrive({action:'list'}, {environment, fetcher}), error => {
+      assert.equal(error.stage, stage);assert.equal(error.upstreamStatus, status);
+      assert.equal(JSON.stringify(error).includes(secret), false);return true;
+    });
+  }
+});

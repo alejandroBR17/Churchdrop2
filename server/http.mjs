@@ -1,3 +1,4 @@
+import {DriveBridgeError} from './driveBridge.mjs';
 export class HttpError extends Error {
   constructor(status, message, retryAfter) { super(message); this.status = status; this.retryAfter = retryAfter; }
 }
@@ -42,5 +43,9 @@ export function errorResponse(error, headers = new Headers()) {
     if (error.retryAfter) headers.set('Retry-After', String(error.retryAfter));
     return json({error: error.message}, error.status, headers);
   }
+  // Record only fixed diagnostic fields, never errors, URLs, bodies or credentials.
+  console.error('univer-request-failure', error instanceof DriveBridgeError
+    ? {category: 'drive', stage: error.stage, upstreamStatus: error.upstreamStatus ?? null}
+    : {category: 'internal'});
   return json({error: 'Não foi possível concluir agora. Tente novamente.'}, 502, headers);
 }

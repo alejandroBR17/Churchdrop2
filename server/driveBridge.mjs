@@ -5,6 +5,7 @@ export class DriveBridgeError extends Error {
   constructor(message = 'Não foi possível acessar o armazenamento agora.') {
     super(message);
     this.name = 'DriveBridgeError';
+    this.stage = 'configuration';
   }
 }
 
@@ -70,23 +71,35 @@ export async function callDrive(request, {
   signal?.addEventListener('abort', abort, {once: true});
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   const common = {signal: controller.signal, credentials: 'omit', cache: 'no-store', redirect: 'manual', referrerPolicy: 'no-referrer'};
+  let stage = 'request';
+  let upstreamStatus = null;
   try {
     let response = await fetcher(url, {...common, method: 'POST', body, headers: {'Content-Type': 'text/plain; charset=utf-8'}});
+    upstreamStatus = response.status;
     if (response.status === 302 || response.status === 303) {
+      stage = 'redirect';
       const location = response.headers.get('Location');
       const target = new URL(location);
       if (target.protocol !== 'https:' || target.hostname !== 'script.googleusercontent.com' || target.port ||
           target.username || target.password || target.pathname !== '/macros/echo' || target.hash) throw new DriveBridgeError();
       await response.body?.cancel();
+      stage = 'content-request';
       response = await fetcher(target.href, {...common, method: 'GET'});
+      upstreamStatus = response.status;
     }
+    stage = 'http-response';
     if (!response.ok) throw new DriveBridgeError();
+    stage = 'response-json';
     const data = await readResponse(response, controller.signal);
+    stage = 'response-contract';
     if (!data || data.status !== 'success' || !data.data || typeof data.data !== 'object' || Array.isArray(data.data)) throw new DriveBridgeError();
     return data.data;
   } catch {
     signal?.throwIfAborted();
-    throw new DriveBridgeError();
+    const failure = new DriveBridgeError();
+    failure.stage = controller.signal.aborted ? 'timeout' : stage;
+    failure.upstreamStatus = upstreamStatus;
+    throw failure;
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener('abort', abort);
