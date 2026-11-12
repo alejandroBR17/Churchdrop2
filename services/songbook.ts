@@ -30,22 +30,25 @@ export function prepareSongs(input:string, options:FormatterOptions={}):{songs:P
   starts.forEach((start,position)=>{
     const end=starts[position+1]??lines.length;
     const chunk=lines.slice(start,end);
-    chunk[0]=chunk[0].replace(/^\s*(?:t[ií]tulo|m[uú]sica)\s*:\s*/iu,'');
+    chunk[0]=chunk[0].replace(/^(\s*(?:[🔴🟠🟡🟢🔵🟣⚫⚪]\s*|#{1,6}\s+)?)(?:t[ií]tulo|m[uú]sica)\s*:\s*/iu,'$1');
     const overrides:Record<number,'keep'|'remove'>={};
     for(const [line,action] of Object.entries(options.overrides||{})) {
       const local=Number(line)-start;if(local>0&&local<=chunk.length)overrides[local]=action;
     }
     // Only the dedicated line immediately below a song title can be an unlabelled credit.
     const author=chunk[1] && authorBelowTitle(chunk[1]) ? 2 : undefined;
-    if(author && options.removeCredits!==false && overrides[author]===undefined)overrides[author]='remove';
+    const explicitAuthor = author && /^\s*(?:Pr\.?|Pastor|Pra\.?|Pastora)\s+/iu.test(chunk[1]);
+    if(explicitAuthor && options.removeCredits!==false && overrides[author!]===undefined)overrides[author!]='remove';
     const result=formatLyrics(chunk.join('\n'),{...options,firstLineIsTitle:true,uppercaseTitle:false,linesPerSlide:options.linesPerSlide??2,overrides});
     const split=result.text.indexOf('\n\n');
     const title=split<0?result.text:result.text.slice(0,split);
     const lyrics=split<0?'':result.text.slice(split+2);
     if(!title)return;
     songs.push({title,lyrics,changes:result.changes.map(change=>({...change,line:change.line+start,
-      reason:change.line===author && !change.kept ? 'Crédito abaixo do título' : change.reason})),
-      review:result.review.map(review=>({...review,line:review.line+start}))});
+      reason:change.line===author && !change.kept && explicitAuthor ? 'Crédito abaixo do título' : change.reason})),
+      review:[...result.review.map(review=>({...review,line:review.line+start})),
+        ...(author && !explicitAuthor && options.removeCredits!==false && overrides[author]===undefined && !result.review.some(row=>row.line===author)
+          ? [{line:author+start,text:chunk[1],reason:'Pode ser um crédito de autor ou parte da letra. Mantido para você conferir.'}] : [])]});
   });
   return {songs};
 }

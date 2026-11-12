@@ -53,6 +53,7 @@ export function formatLyrics(input: string, options: FormatterOptions = {}): For
     const line = index + 1;
     let text = before.normalize('NFC').replace(invisible, '').trim();
     const reasons: string[] = [];
+    let omitRemovedLine = false;
     if (text !== before.trim()) reasons.push('Caracteres invisíveis ou normalização');
     text = text.replace(/[ \t]+/g, ' ');
     if (config.removeSymbols) {
@@ -72,9 +73,15 @@ export function formatLyrics(input: string, options: FormatterOptions = {}): For
       }
     }
     if (config.removeCredits && (isSongCollectionHeading(text) || metadata.test(unwrap(text)) || /^https?:\/\/\S+$/i.test(text) || /^\[(?:ar|al|by|offset):.*\]$/i.test(text))) {
-      text = ''; reasons.push('Crédito ou metadado identificado');
+      text = ''; omitRemovedLine = true; reasons.push('Crédito ou metadado identificado');
     }
-    if (config.removeChords && chordLine(text)) {text = ''; reasons.push('Linha composta por cifras');}
+    if (config.removeChords) {
+      const withChords = text;
+      const next = text.replace(/\[([^\[\]\r\n]{1,40})\]/g, (all, token) => chord.test(token) ? '' : all);
+      if (next !== text) reasons.push('Cifras entre colchetes');
+      text = next;
+      if ((next !== withChords && !text.trim()) || chordLine(text)) {text = ''; omitRemovedLine = true; reasons.push('Linha composta por cifras');}
+    }
     text = text.replace(/[ \t]+/g, ' ').trim();
     const override = config.overrides?.[line];
     const proposed = text;
@@ -86,7 +93,7 @@ export function formatLyrics(input: string, options: FormatterOptions = {}): For
       review.push({line,text,reason:'Conteúdo entre parênteses ou colchetes mantido. Pode ser parte da letra; revise antes de remover.'});
     }
     // Removed markers preserve stanza boundaries, rather than joining unrelated paragraphs.
-    cleaned.push(text);
+    if (text || !omitRemovedLine) cleaned.push(text);
   });
   while(cleaned[0]==='') cleaned.shift();
   while(cleaned.length && cleaned.at(-1)==='') cleaned.pop();

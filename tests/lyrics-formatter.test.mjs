@@ -63,3 +63,15 @@ test('long non-chord tokens and excessive spaces are preserved without expensive
  assert.ok(result.text.includes('C '+token));
  assert.ok(result.text.includes('A paz'));
 });
+
+
+test('inline chords are removed without deleting lyrics, unknown brackets or interrupting two-line slides',()=>{
+ const input='Canção\nC G/B Am\n[G]Eu [D/F#]cantarei\n[Em7]\nC G\nEu seguirei\n\nEu confio [com alegria]';
+ const result=formatLyrics(input);
+ assert.equal(result.text,'CANÇÃO\n\nEu cantarei\nEu seguirei\n\nEu confio [com alegria]');
+ const unchanged=formatLyrics(input,{removeChords:false});
+ assert.ok(unchanged.text.includes('[G]Eu [D/F#]cantarei'));
+ assert.ok(unchanged.text.includes('C G/B Am'));
+ const restored=formatLyrics(input,{overrides:{3:'keep'}});
+ assert.ok(restored.text.includes('[G]Eu [D/F#]cantarei'));
+});

@@ -37,8 +37,11 @@ Eu cuido de Ti
 Eu cuido de Ti
 ► REFRÃO 2X`;
 
-test('the supplied song formats become four titles and clean lyrics, preserving sung repetition',()=>{
- const {songs}=prepareSongs(example);
+test('the supplied song formats flag ambiguous credits and allow removal after review',()=>{
+ const initial=prepareSongs(example);
+ assert.equal(initial.songs.flatMap(song=>song.review).length,4);
+ const overrides=Object.fromEntries(initial.songs.flatMap(song=>song.review).map(row=>[row.line,'remove']));
+ const {songs}=prepareSongs(example,{overrides});
  assert.deepEqual(songs.map(song=>song.title),['Nada Mais','ESCAPE','BENDITO SERÁS','EU CUIDO DE TI']);
  for(const song of songs){assert.ok(song.lyrics);assert.ok(!/Rodrigues|Barroso|━|TRECHO|REFRÃO|2X|🔴|🟣|🎹|🥁|►|▶/u.test(song.lyrics));}
  assert.equal(songs[3].lyrics,'Quando todos os meus medos\n\nEu cuido de Ti\nEu cuido de Ti');
@@ -53,7 +56,11 @@ test('author detection is restricted to the title position and can be undone per
  assert.ok(result.songs[1].lyrics.startsWith('Fernando Rodrigues'));
  const normal=prepareSongs(input);
  assert.ok(normal.songs[0].lyrics.includes('Um verso\nAndré Barroso'));
- assert.equal(normal.songs[1].lyrics,'Outro verso');
+ assert.ok(normal.songs[1].lyrics.startsWith('Fernando Rodrigues'));
+ assert.ok(normal.songs[1].review.some(row=>row.line===8));
+ const reviewed=prepareSongs(input,{overrides:{2:'remove',8:'remove'}});
+ assert.equal(reviewed.songs[1].lyrics,'Outro verso');
+ assert.ok(reviewed.songs[0].lyrics.includes('Um verso\nAndré Barroso'));
 });
 
 test('plain lyrics, devotional phrases, punctuation and unknown parentheticals remain',()=>{
@@ -109,4 +116,39 @@ test('two-line slides keep stanza and section boundaries without inventing or re
  const {songs}=prepareSongs(input);
  assert.equal(songs[0].lyrics,'Eu canto sozinho\n\nEu canto o refrão\nTu és meu Senhor\n\nNós vamos cantar\n\nEu creio em Ti\nEu creio em Ti');
  assert.equal(prepareSongs('Canção\n\nEu canto\nTu cantas\nNós cantamos',{linesPerSlide:0}).songs[0].lyrics,'Eu canto\nTu cantas\nNós cantamos');
+});
+
+
+test('capitalized lyric phrases below a title are retained rather than silently classified as authors',()=>{
+ const {songs}=prepareSongs('Canção\nReina Para Sempre\nTua graça me sustenta');
+ assert.equal(songs[0].lyrics,'Reina Para Sempre\nTua graça me sustenta');
+ assert.equal(songs[0].review[0].line,2);
+ assert.equal(prepareSongs('Canção\nAutor: Nome Exemplo\nEu canto\nTu cantas').songs[0].lyrics,'Eu canto\nTu cantas');
+});
+
+test('title prefixes work with colored and Markdown song headings',()=>{
+ const {songs}=prepareSongs('🔴 Música: Canção da manhã\n\nEu canto ao amanhecer\nEu sigo com fé\n\n## Título: Canção da noite\n\nEu canto ao anoitecer\nEu descanso em paz');
+ assert.deepEqual(songs.map(song=>song.title),['Canção da manhã','Canção da noite']);
+ assert.deepEqual(songs.map(song=>song.lyrics),['Eu canto ao amanhecer\nEu sigo com fé','Eu canto ao anoitecer\nEu descanso em paz']);
+});
+
+test('a bank of pasted formats preserves all sung lines and produces at most two lines per block',()=>{
+ const lyric=['Eu canto com fé','Tua graça me sustenta','Nós seguimos em paz','Eu canto com fé','Tu és meu abrigo'];
+ const cases=[
+  lyric.join('\n'),
+  lyric.join('\r\n'),
+  lyric.map(line=>'🎤 '+line+' ✨').join('\n'),
+  lyric.map(line=>'**'+line+'**').join('\n'),
+  lyric.map(line=>'G D/F# Em7\n'+line).join('\n'),
+  lyric.map(line=>'[G]'+line).join('\n'),
+  lyric.map((line,i)=>'[00:0'+i+'.00]'+line).join('\n'),
+  lyric.map(line=>'<b>'+line+'</b>').join('\n'),
+ ];
+ for(const body of cases){
+  const {songs}=prepareSongs('Título: Exemplo\nAutor: Exemplo rotulado\n\n'+body);
+  assert.equal(songs.length,1);
+  assert.equal(songs[0].title,'Exemplo');
+  assert.deepEqual(songs[0].lyrics.split('\n').filter(Boolean),lyric);
+  for(const block of songs[0].lyrics.split('\n\n'))assert.ok(block.split('\n').length<=2);
+ }
 });
