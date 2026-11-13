@@ -14,6 +14,14 @@ test('missing or hidden anchors fall back to toggling only the clicked item',()=
 test('hidden or not yet rendered files are excluded from the range',()=>{
  assert.deepEqual(rangeSelection(['a'],['a','c','e'],'a','e',true),['a','c','e']);assert.deepEqual(rangeSelection(['a'],order,'a','hidden',true),['a']);
 });
-test('ordinary clicks toggle one item and repeated shift ranges never duplicate IDs',()=>{
- assert.deepEqual(rangeSelection(['a','b','c'],order,'a','b',false),['a','c']);const selected=rangeSelection(['b'],order,'b','e',true);assert.deepEqual(rangeSelection(selected,order,'b','e',true),selected);
+test('ordinary clicks toggle one item and a marked Shift target deselects the interval',()=>{
+ assert.deepEqual(rangeSelection(['a','b','c'],order,'a','b',false),['a','c']);const selected=rangeSelection(['b'],order,'b','e',true);assert.deepEqual(rangeSelection(selected,order,'b','e',true),[]);
+});
+
+
+test('Shift deselection works in both directions and keeps choices outside the visible range',()=>{
+ const selected=['outside','a','b','c','d','e'];
+ for(const [anchor,target] of [['b','d'],['d','b']])assert.deepEqual(rangeSelection(selected,order,anchor,target,true),['outside','a','e']);
+ assert.deepEqual(rangeSelection(['a','hidden','e'],['a','c','e'],'a','e',true),['hidden']);
+ assert.deepEqual(selected,['outside','a','b','c','d','e']);
 });

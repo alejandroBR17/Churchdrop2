@@ -76,7 +76,7 @@ export const Header: React.FC<HeaderProps> = ({
           <button onClick={onOpenStats} className="icon-button hidden lg:flex" title="Estatísticas e Saúde do Servidor"><HardDrive size={18}/></button>
           {onOpenHolyrics && <button onClick={onOpenHolyrics} className="secondary-button hidden md:flex" title="Formatador Holyrics / Projeção"><Sparkles size={17}/>Holyrics</button>}
         </div>
-        {selectedCount>0 && <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-medium text-blue-600 dark:text-blue-300"><span>{selectedCount} de {totalCount} selecionados</span><button onClick={onClearSelection} className="underline underline-offset-4">Limpar seleção</button><p className="hidden md:block w-full text-[11px] font-normal text-neutral-500">Shift + clique seleciona um intervalo sem desmarcar suas outras escolhas.</p></div>}
+        {selectedCount>0 && <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-medium text-blue-600 dark:text-blue-300"><span>{selectedCount} de {totalCount} selecionados</span><button onClick={onClearSelection} className="underline underline-offset-4">Limpar seleção</button><p className="hidden md:block w-full text-[11px] font-normal text-neutral-500">Shift + clique marca ou desmarca um intervalo.</p></div>}
       </div>
     </header>
   );

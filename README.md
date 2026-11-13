@@ -143,4 +143,9 @@ As marcações ficam apenas na memória desta aba e sobrevivem a filtros e atual
 
 ## Seleção por intervalo no notebook
 
-Marque o primeiro arquivo pelo círculo de seleção e use Shift + clique no último para adicionar o intervalo às escolhas existentes. O gesto segue a ordem dos cartões exibidos, nos dois sentidos, inclusive entre grupos. Grupos recolhidos e arquivos ainda não exibidos não são incluídos; Exibir todas permite ampliar o intervalo depois. Um clique comum continua alternando um arquivo. Limpar a seleção, selecionar todos ou mudar os filtros reinicia a referência do intervalo.
+Marque o primeiro arquivo pelo círculo de seleção e use Shift + clique no último. Se o último estiver desmarcado, marca o intervalo; se já estiver marcado, desmarca o intervalo. Escolhas fora do intervalo são preservadas. O gesto segue a ordem dos cartões exibidos, nos dois sentidos, inclusive entre grupos. Grupos recolhidos e arquivos ainda não exibidos não são incluídos; Exibir todas permite ampliar o intervalo depois. Um clique comum continua alternando um arquivo. Limpar a seleção, selecionar todos ou mudar os filtros reinicia a referência do intervalo.
+
+
+## Escolher fotos ampliadas
+
+O visualizador mostra Selecionar esta foto / Desmarcar esta foto e o total de arquivos na seleção. Passar para a próxima foto mantém as escolhas anteriores. Ao fechar, a mesma seleção aparece na biblioteca para Baixar separados; selecionar não inicia transferência. O botão Visualizar dos cartões permite conferir outra imagem com uma seleção já ativa. Selecionar uma foto posterior à primeira página revela seu cartão ao voltar à biblioteca.

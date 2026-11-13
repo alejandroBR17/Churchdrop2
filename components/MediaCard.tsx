@@ -148,11 +148,10 @@ export const MediaCard: React.FC<MediaCardProps> = ({
           )}
         </button>
 
-        {/* Quick View Button Hover Overlay */}
-        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 pointer-events-none">
-          <span className="bg-white/90 dark:bg-neutral-900/90 text-neutral-900 dark:text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow-lg flex items-center gap-1.5 backdrop-blur-sm">
-            <Eye size={14} /> Visualizar
-          </span>
+        <div className="absolute bottom-2 left-2 z-20 pointer-events-none">
+          <button type="button" aria-label={`Visualizar ${item.name}`} onClick={event=>{event.stopPropagation();onView(item);}} className="pointer-events-auto bg-white/90 dark:bg-neutral-900/90 text-neutral-900 dark:text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow-lg flex items-center gap-1.5 backdrop-blur-sm">
+            <Eye size={14}/>Visualizar
+          </button>
         </div>
       </div>
 

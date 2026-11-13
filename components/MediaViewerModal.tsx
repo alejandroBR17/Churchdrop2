@@ -4,12 +4,15 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, Download, ExternalLink, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, 
   RotateCw, Maximize2, Minimize2, Copy, Check, FileText, Music, Video as VideoIcon,
-  Play, Pause, Volume2, VolumeX, Sparkles, Share2
+  Play, Pause, Volume2, VolumeX, Sparkles, Share2, CheckSquare, Square
 } from 'lucide-react';
 import { MediaItem } from '../types';
 
 interface MediaViewerModalProps {
   item: MediaItem | null;
+  isSelected?:boolean;
+  selectedCount?:number;
+  onToggleSelection?:()=>void;
   onClose: () => void;
   onNext: () => void;
   onPrev: () => void;
@@ -21,6 +24,7 @@ interface MediaViewerModalProps {
 
 export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
   item,
+  isSelected=false,selectedCount=0,onToggleSelection,
   onClose,
   onNext,
   onPrev,
@@ -71,6 +75,7 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
   useEffect(()=>{setZoom(1);setRotation(0);setTouchStartX(0);setTouchEndX(0);},[item?.id]);
   useBodyScrollLock(Boolean(item));
   if (!item) return null;
+  const selectionTarget=item.type==='image'?'esta foto':'este arquivo';
 
   const handleCopyText = (content?: string) => {
     if (!content) return;
@@ -367,9 +372,15 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
 
 
       </div>
-      {(hasPrev||hasNext)&&<nav aria-label="Navegação entre arquivos" className="flex shrink-0 items-center justify-between gap-3 bg-black px-3 py-2 text-white">
-        <button type="button" onClick={onPrev} disabled={!hasPrev} title="Anterior (Seta Esquerda)" className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs disabled:opacity-30"><ChevronLeft size={22}/>Anterior</button>
-        <button type="button" onClick={onNext} disabled={!hasNext} title="Próximo (Seta Direita)" className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs disabled:opacity-30">Próximo<ChevronRight size={22}/></button>
+      {(hasPrev||hasNext||onToggleSelection)&&<nav aria-label="Navegação entre arquivos" className="flex shrink-0 items-center justify-between gap-2 bg-black px-3 py-2 text-white">
+        <button type="button" onClick={onPrev} disabled={!hasPrev} aria-label="Anterior" title="Anterior (Seta Esquerda)" className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs disabled:opacity-30"><ChevronLeft size={22}/><span className="hidden sm:inline">Anterior</span></button>
+        {onToggleSelection&&<div className="flex min-w-0 flex-col items-center gap-1">
+          <button type="button" onClick={onToggleSelection} aria-pressed={isSelected} className={`flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold ${isSelected?'bg-blue-600 text-white':'bg-white text-neutral-900'}`}>
+            {isSelected?<CheckSquare size={18}/>:<Square size={18}/>}<span>{isSelected?'Desmarcar':'Selecionar'} {selectionTarget}</span>
+          </button>
+          <span role="status" className="text-[10px] text-neutral-400">{selectedCount} na seleção</span>
+        </div>}
+        <button type="button" onClick={onNext} disabled={!hasNext} aria-label="Próximo" title="Próximo (Seta Direita)" className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs disabled:opacity-30"><span className="hidden sm:inline">Próximo</span><ChevronRight size={22}/></button>
       </nav>}
     </div>
   );

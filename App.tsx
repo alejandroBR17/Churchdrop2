@@ -255,7 +255,7 @@ export default function App() {
 
   const visibleSelectionIds=useMemo(()=>sortedEventNames.flatMap(name=>collapsedGroups[name]?[]:groupedItems[name].slice(0,visibleItemLimit).map(item=>item.id)),[sortedEventNames,groupedItems,collapsedGroups,visibleItemLimit]);
 
-  // Shift follows the displayed order and adds the range to existing selections.
+  // Shift follows displayed order and applies the clicked item state to the range.
   const handleToggleSelect = (id: string, e?: React.MouseEvent) => {
     e?.stopPropagation();
     if(e?.shiftKey)e.preventDefault();
@@ -363,6 +363,15 @@ export default function App() {
   const currentViewerIndex = viewerItem ? filteredItems.findIndex(i => i.id === viewerItem.id) : -1;
   const hasNextViewer = currentViewerIndex !== -1 && currentViewerIndex < filteredItems.length - 1;
   const hasPrevViewer = currentViewerIndex > 0;
+
+  const handleViewerSelection = () => {
+    if(!viewerItem||!filteredItems.some(file=>file.id===viewerItem.id))return;
+    selectionAnchor.current=viewerItem.id;
+    const group=groupedItems[viewerItem.eventName||'Geral']||[];
+    const position=group.findIndex(file=>file.id===viewerItem.id);
+    if(!selectedIds.includes(viewerItem.id))setVisibleItemLimit(previous=>Math.max(previous,position+1));
+    setSelectedIds(previous=>previous.includes(viewerItem.id)?previous.filter(id=>id!==viewerItem.id):[...previous,viewerItem.id]);
+  };
 
   const handleNextViewer = () => {
     if (hasNextViewer) setViewerItem(filteredItems[currentViewerIndex + 1]);
@@ -722,6 +731,9 @@ export default function App() {
       {/* Media Viewer Modal */}
       <MediaViewerModal 
         item={viewerItem}
+        isSelected={Boolean(viewerItem&&selectedIds.includes(viewerItem.id))}
+        selectedCount={selectedIds.length}
+        onToggleSelection={handleViewerSelection}
         onClose={() => setViewerItem(null)}
         onNext={handleNextViewer}
         onPrev={handlePrevViewer}
