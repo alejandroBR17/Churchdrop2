@@ -25,7 +25,7 @@ test('disabled or incomplete setup never admits a visitor', async () => {
 
 test('borrowed-device session is encrypted, secure, short lived and revocable by code rotation', async () => {
   let claims = 0;
-  const handler = createAccessHandler({environment, drive: async input => {assert.equal(input.action, 'claimLoginAttempt'); claims++; return {allowed: true};}});
+  const handler = createAccessHandler({environment, drive: async input => {if(input.action==='deviceCapabilities')return {};assert.equal(input.action, 'claimLoginAttempt'); claims++; return {allowed: true};}});
   const response = await handler(request(undefined, 'POST', {code, remember: false}));
   assert.equal(response.status, 200);
   const setCookie = response.headers.get('set-cookie');
@@ -58,7 +58,7 @@ test('remembered sessions persist; wrong codes and exhausted budget cannot issue
 test('a remembered login survives a new handler/deployment with the same keys until its real expiry',async()=>{
   const old=createAccessHandler({environment:{...environment,VERCEL_URL:'previous-preview.example'},drive:async()=>({allowed:true})});
   const login=await old(request(undefined,'POST',{code,remember:true}));
-  const next=createAccessHandler({environment:{...environment,VERCEL_URL:'new-deployment.example'},drive:async()=>{throw Error('No new login needed');}});
+  const next=createAccessHandler({environment:{...environment,VERCEL_URL:'new-deployment.example'},drive:async input=>{if(input.action==='deviceCapabilities')return {};throw Error('No new login needed');}});
   const authenticated=request(undefined,'GET',undefined,{cookie:cookie(login)});
   const response=await next(authenticated);const data=await response.json();
   assert.equal(data.authenticated,true);assert.equal(data.remembered,true);assert.ok(data.expiresAt>Date.now()+6*86400000);
@@ -87,7 +87,7 @@ test('remember-device refuses anonymous, expired, cross-site and unconfirmed req
   assert.equal((await handler(request(undefined,'POST',{action:'remember',remember:true},{origin:'https://attacker.example'}))).status,403);
   assert.equal(claims,0);
   const login=await handler(request(undefined,'POST',{code,remember:false}));
-  const expired=createAccessHandler({environment,now:()=>Date.now()+9*3600000,drive:async()=>{throw Error('No login');}});
+  const expired=createAccessHandler({environment,now:()=>Date.now()+9*3600000,drive:async input=>{if(input.action==='deviceCapabilities')return {};throw Error('No login');}});
   assert.equal((await expired(request(undefined,'POST',{action:'remember',remember:true},{cookie:cookie(login)}))).status,401);
 });
 

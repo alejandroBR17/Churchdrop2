@@ -1,5 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';import vm from 'node:vm';
 import {readFileSync} from 'node:fs';import {createHmac,scryptSync} from 'node:crypto';
+import {DriveBridgeError} from '../server/driveBridge.mjs';
 import {createAccessHandler} from '../server/access.mjs';import {requireAccess} from '../server/access.mjs';
 const source=readFileSync(new URL('../backend/drive/Code.gs',import.meta.url),'utf8');
 const code='TestOnly!',salt=Buffer.alloc(16,9),origin='https://devices.example';
@@ -84,4 +85,24 @@ test('pending requests have a fixed bounded lifetime and cannot grow the registr
 test('a second browser tab cannot silently poll or cancel the first tab QR with a different pairing cookie',async()=>{
  const h=harness(),p=h.client();const first=await p.call({action:'pairCreate',remember:false});await p.call({action:'pairCreate',remember:false});
  assert.equal((await p.call({action:'pairPoll',id:first.data.id})).status,409);assert.equal((await p.call({action:'pairCancel',id:first.data.id})).status,409);
+});
+
+test('a revoked pre-upgrade cookie cannot bypass the session screen by calling media directly',async()=>{
+ const h=harness(),legacy=h.client(),manager=h.client();h.ready(false);await legacy.login();const original=[...legacy.jar];h.ready(true);h.resetCache();await legacy.call(undefined,'GET');await manager.login();
+ const device=(await legacy.call({action:'devices'})).data.devices.find(d=>d.current);await manager.call({action:'revokeDevice',id:device.id});
+ const cookie=original.map(([k,v])=>`${k}=${v}`).join('; ');
+ await assert.rejects(requireAccess(new Request(origin+'/api/media',{headers:{cookie}}),new Headers(),h.options),e=>e.status===401);
+});
+
+test('network failure does not downgrade legacy-cookie checks; explicitly unsupported old scripts stay compatible',async()=>{
+ const h=harness(),legacy=h.client();h.ready(false);await legacy.login();const cookie=[...legacy.jar].map(([k,v])=>`${k}=${v}`).join('; ');
+ const failure=new DriveBridgeError();failure.stage='timeout';
+ await assert.rejects(requireAccess(new Request(origin+'/api/media',{headers:{cookie}}),new Headers(),{...h.options,drive:async()=>{throw failure}}),error=>error===failure);
+ const unsupported=new DriveBridgeError();unsupported.stage='response-contract';
+ const access=await requireAccess(new Request(origin+'/api/media',{headers:{cookie}}),new Headers(),{...h.options,drive:async()=>{throw unsupported}});assert.equal(access.authorized,true);
+});
+
+test('logging out a legacy cookie after activation also revokes its deterministic device record',async()=>{
+ const h=harness(),p=h.client();h.ready(false);await p.login();const cookie=[...p.jar].map(([k,v])=>`${k}=${v}`).join('; ');h.ready(true);h.resetCache();assert.equal((await p.call(undefined,'DELETE')).status,200);
+ await assert.rejects(requireAccess(new Request(origin+'/api/media',{headers:{cookie}}),new Headers(),h.options),e=>e.status===401);
 });

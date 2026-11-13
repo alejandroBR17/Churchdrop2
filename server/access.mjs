@@ -30,7 +30,13 @@ export async function requireAccess(request, headers, {environment = process.env
     throw new HttpError(401, 'Entre com sua senha para continuar.');
   }
   if(session.deviceId) await verifyDevice(request,session,{environment,now,drive});
-  else await verifyLinkedSession(request, session, {environment, now, drive});
+  else {
+    await verifyLinkedSession(request, session, {environment, now, drive});
+    if(await registerDevice(request,session,{environment,now,drive})){
+      session.remembered=session.remembered===true||(session.remembered===undefined&&session.expiresAt-now()>8*3600000);
+      session.updateConfig(sessionOptions(environment,session.remembered));await session.save();
+    }
+  }
   return session;
 }
 
@@ -60,9 +66,12 @@ export function createAccessHandler({environment = process.env, drive = callDriv
         catch (error) { if (error instanceof HttpError && error.status === 401) return json({enabled: true, authenticated: false, deviceAccess:await hasDeviceAccess(request,{environment,now,drive})}, 200, headers); throw error; }
       }
       sameOriginWrite(request);
-      const session = await getIronSession(webCookies(request, headers), sessionOptions(environment));
+      let session = await getIronSession(webCookies(request, headers), sessionOptions(environment));
       if (request.method === 'DELETE') {
-        if(session.deviceId) await deviceOperation({op:'revoke',actorId:session.deviceId,id:session.deviceId},request,{environment,now,drive});
+        try {
+          if(!session.deviceId&&session.authorized===true&&session.expiresAt>now())await registerDevice(request,session,{environment,now,drive});
+          if(session.deviceId)await deviceOperation({op:'revoke',actorId:session.deviceId,id:session.deviceId},request,{environment,now,drive});
+        }catch(error){if(!(error instanceof HttpError&&error.status===401))throw error;}
         session.destroy(); return json({success: true}, 200, headers);
       }
       const input = await readJson(request, 2048);
@@ -71,7 +80,7 @@ export function createAccessHandler({environment = process.env, drive = callDriv
         if(!await hasDeviceAccess(request,linkOptions))throw new HttpError(503,'A autorização entre aparelhos ainda está sendo preparada. Use sua senha por enquanto.');
         const authActions=['devices','revokeDevice','pairInvite','pairInspect','pairApprove','pairReject'];
         if(authActions.includes(input.action)){
-          await requireAccess(request,headers,linkOptions);
+          session=await requireAccess(request,headers,linkOptions);
           await registerDevice(request,session,linkOptions);
           session.updateConfig(sessionOptions(environment,session.remembered===true));await session.save();
         }
@@ -120,7 +129,7 @@ export function createAccessHandler({environment = process.env, drive = callDriv
       }
 
       if (['linkStatus', 'createLink', 'revokeLink'].includes(input.action)) {
-        await requireAccess(request, headers, linkOptions);
+        session=await requireAccess(request, headers, linkOptions);
         if (input.action !== 'linkStatus') {
           await verifyCode(input, request, 403);
           // Fresh code authentication keeps the managing device usable when its
@@ -152,7 +161,7 @@ export function createAccessHandler({environment = process.env, drive = callDriv
       }
       if (input.action === 'remember') {
         if (input.remember !== true) throw new HttpError(400, 'Confirme que deseja lembrar este aparelho.');
-        await requireAccess(request, headers, linkOptions);
+        session=await requireAccess(request, headers, linkOptions);
         session.updateConfig(sessionOptions(environment, true));
         session.remembered = true;
         session.expiresAt = Math.min(session.linkHash ? session.linkExpiresAt : Infinity, now() + MAX_TTL * 1000);

@@ -1,5 +1,6 @@
 import {createHmac, randomBytes} from 'node:crypto';
 import {HttpError} from './http.mjs';
+import {DriveBridgeError} from './driveBridge.mjs';
 
 const capabilityStores = new WeakMap();
 export const PAIR_TTL_MS = 5 * 60000;
@@ -25,7 +26,11 @@ export async function hasDeviceAccess(request, {environment, drive, now}) {
   if (cached && cached.until > now()) return cached.available;
   let available = false;
   try {available = (await drive({action:'deviceCapabilities'}, {environment,signal:request.signal})).version === 1;}
-  catch { /* Existing Apps Script versions keep password access working. */ }
+  catch(error) {
+    // Old scripts return the signed transport's unsupported-action contract.
+    // Network/configuration failures must never downgrade revocation checks.
+    if(!(error instanceof DriveBridgeError)||error.stage!=='response-contract')throw error;
+  }
   if(capabilities.size>32)capabilities.clear();
   capabilities.set(key,{available,until:now()+60000});
   return available;
