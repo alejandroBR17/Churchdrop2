@@ -1,9 +1,8 @@
-# Integração Drive do Univer Mídia — preparação
+# Integração Drive do Univer Mídia
 
-Esta integração está ativa **somente no Preview protegido**, sem migrar ou alterar o acervo legado.
-Os testes automatizados usam adaptadores isolados. Um diagnóstico real, expressamente autorizado, também confirmou envio e leitura da resposta no navegador; somente o arquivo temporário foi enviado à lixeira, sem publicação por link.
+A API do app usa o Apps Script assinado indicado nas variáveis privadas da Vercel. A fonte atual é `Code.gs`; nenhuma chave ou URL privada deve entrar no frontend. Não recrie a pasta nem execute a inicialização para atualizar o código.
 
-Estado verificado em 17/10/2026: o responsável autorizou o consentimento Google e a implantação do web app assinado. `initializeStorage` concluiu com sucesso; não reexecutar para continuar. Publicação v3 concluída no endereço existente, com escopos e acesso preservados. Consulta assinada real retornou pasta vazia e GET anônimo foi recusado. Entrada por código, biblioteca vazia e saída foram conferidas na interface real. A conferência inicial não alterou arquivos. Na investigação posterior, foram usados apenas os arquivos temporários autorizados; os envios legítimos pendentes foram preservados. URL/chave/hash são Secrets somente Preview de `univer-midia`; UNIVER_DRIVE_ENABLED=true apenas nesse ambiente. A ativação e o diagnóstico não comprovam publicação/download completos de material legítimo nem migra o acervo antigo.
+Para ativar autorização por QR e aparelhos conectados, atualize a implantação existente com a fonte atual e siga [o guia](../../docs/autorizar-aparelhos.md). Sem essa atualização, o app mantém a senha e os envios e não anuncia suporte aos novos recursos. As instruções históricas abaixo descrevem a arquitetura original; configurações reais devem preservar o serviço de produção já em uso.
 
 ## Arquitetura
 

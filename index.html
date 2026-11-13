@@ -5,6 +5,13 @@
     <meta name="referrer" content="no-referrer" />
     <script>
       (() => {
+        const pair = /^#(pair|join)=([a-f0-9]{32})\.([a-f0-9]{64})$/.exec(location.hash);
+        if(pair){
+          let value={mode:pair[1]==='pair'?'approve':'join',id:pair[2],token:pair[3]};
+          history.replaceState(history.state,'',location.pathname+location.search);
+          window.__univerTakePairing=()=>{const result=value;value=null;return result;};
+          return;
+        }
         if (!location.hash.startsWith('#access=')) return;
         let token = location.hash.slice(8);
         if (!/^[a-f0-9]{64}$/.test(token)) token = '';

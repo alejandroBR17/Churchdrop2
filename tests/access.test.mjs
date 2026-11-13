@@ -67,7 +67,7 @@ test('a remembered login survives a new handler/deployment with the same keys un
 
 test('an authenticated temporary session can remember its device without resending the access code',async()=>{
   let claims=0;
-  const handler=createAccessHandler({environment,drive:async()=>{claims++;return {allowed:true};}});
+  const handler=createAccessHandler({environment,drive:async input=>{if(input.action==='claimLoginAttempt')claims++;return input.action==='deviceCapabilities'?{}:{allowed:true};}});
   const login=await handler(request(undefined,'POST',{code,remember:false}));
   const current={cookie:cookie(login)};
   const temporary=await(await handler(request(undefined,'GET',undefined,current))).json();
@@ -81,7 +81,7 @@ test('an authenticated temporary session can remember its device without resendi
 
 test('remember-device refuses anonymous, expired, cross-site and unconfirmed requests without spending login budget',async()=>{
   let claims=0;
-  const handler=createAccessHandler({environment,drive:async()=>{claims++;return {allowed:true};}});
+  const handler=createAccessHandler({environment,drive:async input=>{if(input.action==='claimLoginAttempt')claims++;return input.action==='deviceCapabilities'?{}:{allowed:true};}});
   assert.equal((await handler(request(undefined,'POST',{action:'remember',remember:true}))).status,401);
   assert.equal((await handler(request(undefined,'POST',{action:'remember',remember:false}))).status,400);
   assert.equal((await handler(request(undefined,'POST',{action:'remember',remember:true},{origin:'https://attacker.example'}))).status,403);

@@ -151,3 +151,16 @@ test('expired link never prevents code login and creation of a fresh ninety-day 
   assert.notEqual(fresh.token,old.token);assert.equal(fresh.expiresAt,h.time()+90*86400000);
   assert.equal((await h.handler(request({action:'useLink',token:fresh.token,remember:false}))).status,200);
 });
+
+test('fresh password verification detaches a QR-derived managing device from a revoked link ancestor',async()=>{
+ const h=harness(),owner=await h.login(),link=await h.create(owner);
+ const linked=await h.handler(request({action:'useLink',token:link.token,remember:true}));const linkedCookie=cookie(linked);
+ const pairing=await h.handler(request({action:'pairCreate',remember:false}));const pairData=await pairing.json(),[id,token]=new URL(pairData.url).hash.slice(6).split('.');
+ const pairCookie=pairing.headers.getSetCookie().find(c=>c.startsWith('__Host-univer-pairing=')).split(';')[0];
+ await h.handler(request({action:'pairApprove',id,token,confirm:true},linkedCookie));
+ const consumed=await h.handler(request({action:'pairPoll'},pairCookie));const childCookie=consumed.headers.getSetCookie().find(c=>c.startsWith('__Host-univer-session=')).split(';')[0];
+ const revoked=await h.handler(request({action:'revokeLink',code},childCookie));assert.equal(revoked.status,200);
+ const independent=revoked.headers.getSetCookie().find(c=>c.startsWith('__Host-univer-session=')).split(';')[0];
+ assert.equal((await(await h.handler(request(undefined,independent,origin,'GET'))).json()).authenticated,true);
+ assert.equal((await(await h.handler(request(undefined,linkedCookie,origin,'GET'))).json()).authenticated,false);
+});

@@ -59,6 +59,8 @@ function authenticate_(event) {
 
 function dispatch_(request) {
   switch (request.action) {
+    case 'deviceCapabilities': return {version:1};
+    case 'deviceAccess': return deviceAccess_(request);
     case 'list': return list_(request.pageToken);
     case 'beginUpload': return beginUpload_(request);
     case 'publishUpload': return publishUpload_(request.id, request.confirmShare);
@@ -283,4 +285,98 @@ function retentionPreview_(days, pageToken) {
       Array.isArray(file.parents) && file.parents.indexOf(rootId_()) !== -1 && !file.trashed &&
       Number.isFinite(uploaded) && uploaded <= cutoff;
   }), nextPageToken: page.nextPageToken};
+}
+
+/** Durable, bounded device and QR state. Only the signed server can call this. */
+function deviceAccess_(r) {
+  if (!/^[a-f0-9]{64}$/.test(r.scope || '')) throw new Error('Invalid device scope');
+  var lock = LockService.getScriptLock(); lock.waitLock(5000);
+  try {
+    var props = properties_(), key = 'DEVICES_V1_' + r.scope, raw = props.getProperty(key);
+    var state = raw ? JSON.parse(raw) : {devices:[], pairs:[]};
+    if (!state || !Array.isArray(state.devices) || !Array.isArray(state.pairs)) throw new Error('Invalid device state');
+    var now = Date.now(), changed = false;
+    // Retain device tombstones until their original cookies expire.
+    state.devices = state.devices.filter(function(d){return d.expiresAt > now;});
+    state.pairs = state.pairs.filter(function(p){return p.expiresAt > now;});
+    function token(v){return typeof v === 'string' && /^[a-f0-9]{64}$/.test(v);}
+    function pairId(v){return typeof v === 'string' && /^[a-f0-9]{32}$/.test(v);}
+    function equal(a,b){if(!token(a)||!token(b))return false;var diff=0;for(var i=0;i<64;i++)diff|=a.charCodeAt(i)^b.charCodeAt(i);return diff===0;}
+    function device(id){return state.devices.find(function(d){return d.id===id;});}
+    function active(d, visited){
+      if(!d||d.revoked||d.expiresAt<=now)return false;
+      visited=visited||[];if(visited.indexOf(d.id)!==-1||visited.length>16)return false;
+      if(d.linkHash){var link=JSON.parse(props.getProperty('ACCESS_LINK_V1_'+r.scope)||'null');if(!link||link.revoked||link.expiresAt<=now||link.expiresAt<d.linkExpiresAt||!equal(link.hash,d.linkHash))return false;}
+      return !d.parentId || active(device(d.parentId),visited.concat(d.id));
+    }
+    function expiry(value){return Number.isSafeInteger(value)&&value>now&&value<=now+7*86400000+60000;}
+    function label(value){return typeof value==='string'&&value.length>0&&value.length<=70&&!/[\x00-\x1f\x7f]/.test(value);}
+    function save(value){var json=JSON.stringify(state);if(encodeURIComponent(json).replace(/%[A-F\d]{2}/g,'x').length>8500)throw new Error('Device state limit');props.setProperty(key,json);return value;}
+    function pair(){return state.pairs.find(function(p){return p.id===r.id;});}
+    function view(p){return {status:p.status,expiresAt:p.expiresAt,label:p.label||'',remember:p.remember===true};}
+    function actor(){return active(device(r.actorId));}
+    if(r.op==='register'){
+      if(!token(r.id)||!label(r.label)||!expiry(r.expiresAt))throw new Error('Invalid registration');
+      if(r.linkHash&&(!token(r.linkHash)||!expiry(r.linkExpiresAt)&&!(Number.isSafeInteger(r.linkExpiresAt)&&r.linkExpiresAt>now)))throw new Error('Invalid linked registration');
+      var d=device(r.id);
+      if(d&&!active(d))return {error:'denied'};
+      if(!d){if(state.devices.length>=16)return {error:'limit'};d={id:r.id,label:r.label,createdAt:now,seenAt:now,expiresAt:r.expiresAt};if(r.linkHash){d.linkHash=r.linkHash;d.linkExpiresAt=r.linkExpiresAt;}state.devices.push(d);}
+      // Registration never extends existing access or resurrects a revoked ID.
+      return save({active:true,expiresAt:d.expiresAt});
+    }
+    if(r.op==='verify'){
+      var d=device(r.id);if(!active(d))return {active:false};
+      if(now-d.seenAt>60000){d.seenAt=now;return save({active:true,expiresAt:d.expiresAt});}
+      return {active:true,expiresAt:d.expiresAt};
+    }
+    if(r.op==='extend'){
+      var d=device(r.id);if(!active(d))return {error:'denied'};if(!expiry(r.expiresAt))throw new Error('Invalid expiry');
+      var parent=d.parentId?device(d.parentId):null;
+      d.expiresAt=Math.min(r.expiresAt,parent?parent.expiresAt:Infinity,d.linkHash?d.linkExpiresAt:Infinity);
+      return save({active:true,expiresAt:d.expiresAt});
+    }
+    if(r.op==='list'){
+      if(!actor())return {error:'denied'};
+      return {devices:state.devices.filter(function(d){return active(d);}).map(function(d){return {id:d.id,label:d.label,createdAt:d.createdAt,seenAt:d.seenAt,expiresAt:d.expiresAt,current:d.id===r.actorId};})};
+    }
+    if(r.op==='revoke'){
+      if(!actor()&&r.actorId!==r.id)return {error:'denied'};
+      var d=device(r.id);if(d)d.revoked=true;
+      return save({revoked:true});
+    }
+    if(r.op==='create'||r.op==='invite'){
+      if(!pairId(r.id)||!token(r.approvalHash)||!token(r.requestHash)&&r.op==='create'||!token(r.joinHash)&&r.op==='invite'||!label(r.label)||typeof r.remember!=='boolean')throw new Error('Invalid pairing');
+      if(r.op==='invite'&&!actor())return {error:'denied'};
+      if(state.pairs.length>=4)return {error:'limit'};
+      var p={id:r.id,approvalHash:r.approvalHash,expiresAt:now+300000,status:r.op==='invite'?'invited':'pending',label:r.label,remember:r.remember};
+      if(r.op==='invite'){p.creatorId=r.actorId;p.joinHash=r.joinHash;}else p.requestHash=r.requestHash;
+      state.pairs.push(p);return save(view(p));
+    }
+    if(!pairId(r.id))throw new Error('Invalid pairing ID');
+    var p=pair();if(!p)return {error:'expired'};
+    if(r.op==='join'){
+      if(!equal(p.joinHash,r.joinHash)||!token(r.requestHash)||!label(r.label)||typeof r.remember!=='boolean'||!active(device(p.creatorId)))return {error:'denied'};
+      if(p.status!=='invited')return {error:'conflict'};
+      p.requestHash=r.requestHash;p.label=r.label;p.remember=r.remember;p.status='pending';delete p.joinHash;return save(view(p));
+    }
+    if(r.op==='inspect'||r.op==='approve'||r.op==='reject'){
+      if(!actor()||!equal(p.approvalHash,r.approvalHash)||p.creatorId&&p.creatorId!==r.actorId)return {error:'denied'};
+      if(r.op==='inspect')return view(p);
+      if(r.op==='reject'){if(p.status==='consumed')return {error:'conflict'};p.status='rejected';return save(view(p));}
+      if(p.status==='approved'&&p.parentId===r.actorId)return view(p);
+      if(p.status!=='pending')return {error:'conflict'};
+      p.status='approved';p.parentId=r.actorId;p.deviceExpiresAt=Math.min(device(r.actorId).expiresAt,now+(p.remember?7*86400000:8*3600000));return save(view(p));
+    }
+    if(r.op==='poll'||r.op==='cancel'){
+      if(!equal(p.requestHash,r.requestHash))return {error:'denied'};
+      if(r.op==='cancel'){if(p.deviceId){var cancelled=device(p.deviceId);if(cancelled)cancelled.revoked=true;}p.status='cancelled';return save(view(p));}
+      if(p.status!=='approved'&&p.status!=='consumed')return view(p);
+      if(!active(device(p.parentId))||p.deviceExpiresAt<=now)return {error:'denied'};
+      var d=p.deviceId?device(p.deviceId):null;
+      if(!d){if(state.devices.length>=16)return {error:'limit'};if(!token(r.deviceId))throw new Error('Invalid new device');d={id:r.deviceId,parentId:p.parentId,label:p.label,createdAt:now,seenAt:now,expiresAt:p.deviceExpiresAt};state.devices.push(d);p.deviceId=d.id;p.status='consumed';}
+      if(!active(d))return {error:'denied'};
+      return save({status:'consumed',deviceId:d.id,expiresAt:d.expiresAt,remember:p.remember});
+    }
+    throw new Error('Invalid device operation');
+  } finally {lock.releaseLock();}
 }
