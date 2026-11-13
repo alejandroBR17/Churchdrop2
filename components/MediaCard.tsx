@@ -60,13 +60,13 @@ export const MediaCard: React.FC<MediaCardProps> = ({
 
   return (
     <div 
-      className={`media-card group relative bg-white dark:bg-neutral-900 rounded-2xl overflow-hidden border transition-all duration-200 cursor-pointer hover:shadow-xl hover:-translate-y-0.5 ${
+      className={`media-card group relative select-none bg-white dark:bg-neutral-900 rounded-2xl overflow-hidden border transition-all duration-200 cursor-pointer hover:shadow-xl hover:-translate-y-0.5 ${
         isSelected 
           ? 'ring-2 ring-univer-blue border-transparent bg-blue-50/40 dark:bg-blue-950/20' 
           : 'border-neutral-200/80 dark:border-neutral-800/80'
       }`}
       onClick={(e) => {
-        if (hasSelection) {
+        if (hasSelection || e.shiftKey) {
           onToggle(item.id, e);
         } else {
           onView(item);

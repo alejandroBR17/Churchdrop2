@@ -1,3 +1,4 @@
+import {rangeSelection} from './services/rangeSelection';
 import {getDownloadRequests,subscribeDownloadRequests,clearDownloadRequests} from './services/downloadRequests';
 import {useLibrarySync} from './hooks/useLibrarySync';
 import React, { useState, useEffect, useRef, useMemo, useSyncExternalStore } from 'react';
@@ -53,6 +54,7 @@ export default function App() {
   const resolvedDay = selectedDay === 'recent' ? days[0]?.key : selectedDay === 'all' ? undefined : selectedDay;
   const dayItems = useMemo(()=>resolvedDay ? items.filter(item=>uploadDay(item.date)===resolvedDay) : items,[items,resolvedDay]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const selectionAnchor=useRef<string|null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const selectedItems = useMemo(() => items.filter(item => selectedIds.includes(item.id)), [items, selectedIds]);
@@ -127,7 +129,7 @@ export default function App() {
 
   // Reset visible limit on filter/search change (progressive chunking)
   useEffect(() => {
-    setVisibleItemLimit(12);
+    setVisibleItemLimit(12);selectionAnchor.current=null;
   }, [activeFilter, searchTerm, resolvedDay]);
 
   const mutationCount = useRef(0);
@@ -197,6 +199,7 @@ export default function App() {
       if ((e.metaKey || e.ctrlKey) && e.key === 'a') {
         if (!['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement).tagName) && !(e.target as HTMLElement).isContentEditable) {
           e.preventDefault();
+          selectionAnchor.current=null;
           setSelectedIds(filteredItems.map(i => i.id));
           showToast(`${filteredItems.length} itens selecionados`, 'info');
         }
@@ -250,19 +253,26 @@ export default function App() {
     });
   }, [groupedItems]);
 
-  // Selection Handlers
+  const visibleSelectionIds=useMemo(()=>sortedEventNames.flatMap(name=>collapsedGroups[name]?[]:groupedItems[name].slice(0,visibleItemLimit).map(item=>item.id)),[sortedEventNames,groupedItems,collapsedGroups,visibleItemLimit]);
+
+  // Shift follows the displayed order and adds the range to existing selections.
   const handleToggleSelect = (id: string, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    setSelectedIds(prev => 
-      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
-    );
+    e?.stopPropagation();
+    if(e?.shiftKey)e.preventDefault();
+    if(!visibleSelectionIds.includes(id))return;
+    const anchor=selectionAnchor.current;
+    const shift=Boolean(e?.shiftKey);
+    if(!shift||anchor===null||!visibleSelectionIds.includes(anchor))selectionAnchor.current=id;
+    setSelectedIds(previous=>rangeSelection(previous,visibleSelectionIds,anchor,id,shift));
   };
 
   const handleSelectAll = () => {
+    selectionAnchor.current=null;
     setSelectedIds(filteredItems.map(i => i.id));
   };
 
   const handleClearSelection = () => {
+    selectionAnchor.current=null;
     setSelectedIds([]);
   };
 
@@ -481,7 +491,7 @@ export default function App() {
             <button type="button" disabled={!filteredItems.length} onClick={handleSelectAll} className="rounded-xl bg-blue-600 px-4 py-3 text-xs font-semibold text-white disabled:opacity-40">{resolvedDay ? 'Selecionar arquivos deste dia' : 'Selecionar resultados'}</button>
             <div className="w-full space-y-2">
               <p role="status" className="text-xs leading-relaxed text-neutral-500">Mostrando {filteredItems.length} de {items.length} arquivos nos filtros atuais. {resolvedDay ? `Dia ${resolvedDay.split('-').reverse().join('/')}.` : 'Todos os dias.'}</p>
-              {items.length>0 && (resolvedDay || activeFilter!=='all' || searchTerm.trim()) && <button type="button" onClick={()=>{setSelectedDay('all');setActiveFilter('all');setSearchTerm('');setSelectedIds([]);setCollapsedGroups({});}} className="secondary-button w-full sm:w-auto disabled:opacity-40">Mostrar todos os arquivos ({items.length})</button>}
+              {items.length>0 && (resolvedDay || activeFilter!=='all' || searchTerm.trim()) && <button type="button" onClick={()=>{selectionAnchor.current=null;setSelectedDay('all');setActiveFilter('all');setSearchTerm('');setSelectedIds([]);setCollapsedGroups({});}} className="secondary-button w-full sm:w-auto disabled:opacity-40">Mostrar todos os arquivos ({items.length})</button>}
               {requestedDownloads.size>0 && <div className="flex flex-wrap items-center justify-between gap-2 pt-2 text-xs text-neutral-500"><span>Marcações de download nesta aba</span><button type="button" disabled={Boolean(downloadQueue)} onClick={clearDownloadRequests} aria-label="Limpar marcações de download" className="min-h-11 rounded-xl px-3 font-semibold text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950 disabled:opacity-40">Limpar marcações</button></div>}
             </div>
           </section>

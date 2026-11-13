@@ -139,3 +139,8 @@ A atualização preserva busca, tipo, grupos recolhidos e a seleção dos arquiv
 Os cartões indicam Download solicitado depois que o app encaminha o pedido ao navegador. Pedidos individuais, pela fila ou pelo visualizador usam o mesmo registro. A marca não confirma que o arquivo foi salvo e não bloqueia uma nova tentativa. Arquivos que ainda estão aguardando na fila ou cujo pedido falhou antes de iniciar não são marcados.
 
 As marcações ficam apenas na memória desta aba e sobrevivem a filtros e atualizações automáticas. Limpar marcações apaga somente esses indicadores, sem cancelar downloads nem alterar arquivos. Sair ou recarregar a página remove o registro. Nenhum nome de arquivo, link ou histórico de download é persistido no armazenamento do navegador ou no servidor.
+
+
+## Seleção por intervalo no notebook
+
+Marque o primeiro arquivo pelo círculo de seleção e use Shift + clique no último para adicionar o intervalo às escolhas existentes. O gesto segue a ordem dos cartões exibidos, nos dois sentidos, inclusive entre grupos. Grupos recolhidos e arquivos ainda não exibidos não são incluídos; Exibir todas permite ampliar o intervalo depois. Um clique comum continua alternando um arquivo. Limpar a seleção, selecionar todos ou mudar os filtros reinicia a referência do intervalo.
