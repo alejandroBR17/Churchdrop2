@@ -1,10 +1,12 @@
+import {duplicateWarnings,interruptedOutcome} from '../services/uploadReview';
+import type {UploadOutcome} from '../services/uploadReview';
 import {useBodyScrollLock} from '../hooks/useBodyScrollLock';
 import React, { useState, useEffect, useRef } from 'react';
 import {X, Upload, FileText, Loader2} from 'lucide-react';
 import {runUploadQueue} from '../services/uploadQueue';
 import compressionWorkerUrl from 'browser-image-compression/dist/browser-image-compression.js?url';
 import type {PendingUpload, UploadStatus} from '../services/churchService';
-import {getPendingUploads, publishPendingUpload, getServiceName, uploadFileToScript} from '../services/churchService';
+import {getCachedFiles, getPendingUploads, publishPendingUpload, getServiceName, uploadFileToScript} from '../services/churchService';
 
 function formatBytes(value: number) {
   if (value < 1024) return `${value} B`;
@@ -25,6 +27,18 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   showToast
 }) => {
   const [files, setFiles] = useState<File[]>([]);
+  const [report,setReport]=useState<Array<{file:File;outcome:UploadOutcome;phase?:string;message?:string}>>([]);
+  const [duplicateConsent,setDuplicateConsent]=useState(false);
+  const [paused,setPaused]=useState(false);
+  const [offline,setOffline]=useState(!navigator.onLine);
+  const [library,setLibrary]=useState(getCachedFiles);
+  const warnings=duplicateWarnings(files,library);
+  const updateReport=(file:File,patch:{outcome?:UploadOutcome;phase?:string;message?:string})=>setReport(previous=>{
+    const old=previous.find(item=>item.file===file);
+    return old?previous.map(item=>item.file===file?{...item,...patch}:item):[...previous,{file,outcome:'waiting',...patch}];
+  });
+  useEffect(()=>{const online=()=>setOffline(false),off=()=>{setOffline(true);request.current?.abort();};window.addEventListener('online',online);window.addEventListener('offline',off);return()=>{window.removeEventListener('online',online);window.removeEventListener('offline',off);};},[]);
+
   const [uploadDate, setUploadDate] = useState(() => {const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;});
   const [eventName, setEventName] = useState(getServiceName);
   const [isCustomEvent, setIsCustomEvent] = useState(false);
@@ -45,7 +59,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   useEffect(() => () => request.current?.abort(), []);
   useEffect(() => {if (!isOpen) request.current?.abort();}, [isOpen]);
   useEffect(() => {
-    if (isOpen) {setPendingUploads(getPendingUploads()); setRecoveryConsent(false); setRecoveryError('');}
+    if (isOpen) {setLibrary(getCachedFiles());setPendingUploads(getPendingUploads()); setRecoveryConsent(false); setRecoveryError('');}
   }, [isOpen]);
 
 
@@ -62,7 +76,8 @@ export const UploadModal: React.FC<UploadModalProps> = ({
     if (isUploading) return;
     if (e.target.files) {
       const selected = Array.from(e.target.files);
-      setFiles(prev => [...prev, ...selected]);
+      if(!files.length&&report.every(item=>item.outcome==='complete'))setReport([]);
+      setFiles(prev => [...prev, ...selected]);setDuplicateConsent(false);e.target.value='';
     }
   };
 
@@ -72,16 +87,20 @@ export const UploadModal: React.FC<UploadModalProps> = ({
     setIsDragOver(false);
     if (e.dataTransfer.files) {
       const dropped = Array.from(e.dataTransfer.files);
-      setFiles(prev => [...prev, ...dropped]);
+      if(!files.length&&report.every(item=>item.outcome==='complete'))setReport([]);
+      setFiles(prev => [...prev, ...dropped]);setDuplicateConsent(false);
     }
   };
 
   const removeFile = (index: number) => {
-    setFiles(prev => prev.filter((_, i) => i !== index));
+    const removed=files[index];setReport(previous=>previous.filter(item=>item.file!==removed||item.outcome==='complete'));
+    setFiles(prev => prev.filter((_, i) => i !== index));setDuplicateConsent(false);
   };
 
   const handleStartUpload = async () => {
-    if (isUploading || recovering) return;
+    if (isUploading || recovering || offline) return;
+    const latest=getCachedFiles();setLibrary(latest);
+    if(duplicateWarnings(files,latest).size&&!duplicateConsent){showToast('Confira os possíveis repetidos antes de enviar.','info');return;}
     if (files.length === 0 || !shareByLink) {
       showToast('Selecione pelo menos um arquivo para enviar!', 'error');
       return;
@@ -89,7 +108,8 @@ export const UploadModal: React.FC<UploadModalProps> = ({
 
     setIsUploading(true);
     setActiveTransfers({}); setCompletedCount(0);
-    setUploadError('');
+    setUploadError('');setPaused(false);
+    setReport(previous=>[...previous.filter(item=>item.outcome==='complete'||!files.includes(item.file)),...files.map(file=>({file,outcome:'waiting' as UploadOutcome}))]);
     const controller = new AbortController(); request.current = controller;
     const batch = [...files];
     // Keep image decoding sequential on memory-constrained phones and notebooks.
@@ -101,7 +121,8 @@ export const UploadModal: React.FC<UploadModalProps> = ({
     };
     const {completed, error} = await runUploadQueue(batch, async (original, index) => {
       let fileToUpload = prepared.current.get(original) || original;
-      const update = (status:UploadStatus|null, compressing=false) => setActiveTransfers(previous=>({...previous,[index]:{name:original.name,status,compressing}}));
+      let phase:string|undefined;
+      const update = (status:UploadStatus|null, compressing=false) => {if(status)phase=status.phase;updateReport(original,{phase});setActiveTransfers(previous=>({...previous,[index]:{name:original.name,status,compressing}}));};
       update(null);
       try {
         if (!prepared.current.has(original) && compressImages && /^image\/(?:jpeg|png|webp)$/.test(original.type) && original.size > 1024 * 1024) {
@@ -120,7 +141,8 @@ export const UploadModal: React.FC<UploadModalProps> = ({
         prepared.current.set(original,fileToUpload);
         update(null);
         await uploadFileToScript(fileToUpload,eventName,undefined,{signal:controller.signal,shareByLink,onStatus:status=>update(status)});
-        setCompletedCount(count=>count+1);
+        prepared.current.delete(original);setCompletedCount(count=>count+1);updateReport(original,{outcome:'complete',phase:'complete',message:undefined});
+      } catch(cause){updateReport(original,{outcome:interruptedOutcome(phase,controller.signal.aborted),phase,message:cause instanceof Error?cause.message:'Não foi possível concluir.'});throw cause;
       } finally {
         setActiveTransfers(previous=>{const next={...previous};delete next[index];return next;});
       }
@@ -129,15 +151,12 @@ export const UploadModal: React.FC<UploadModalProps> = ({
     const successCount = completed.size;
     if(error && !controller.signal.aborted)setUploadError(error instanceof Error?error.message:'Falha no envio.');
 
-    setIsUploading(false);
+    setIsUploading(false);setPaused(controller.signal.aborted);
     setFiles([...remaining]);
 
     if (successCount > 0) {
-      showToast(`${successCount} arquivo(s) enviado(s) com sucesso!`, 'success');
       onSuccess();
-      if (remaining.size === 0) {setShareByLink(false); onClose();}
-    } else {
-      showToast(controller.signal.aborted ? 'Envio pausado. Toque em Enviar arquivos para retomar nesta página.' : 'O envio não terminou. Os arquivos continuam na lista.', 'info');
+      if (remaining.size === 0) {setShareByLink(false);setUploadError('');}
     }
   };
 
@@ -163,7 +182,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400"><Upload size={20}/></span>
             <div><h2 id="upload-title" className="font-bold text-base">Enviar arquivos</h2><p className="mt-0.5 text-xs text-neutral-500">Escolha o material para a biblioteca.</p></div>
           </div>
-          <button type="button" aria-label="Fechar envio" onClick={onClose} disabled={isUploading} className="p-2 rounded-xl text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-40"><X size={20}/></button>
+          <button type="button" aria-label="Fechar envio" onClick={onClose} disabled={isUploading||Boolean(recovering)} className="p-2 rounded-xl text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-40"><X size={20}/></button>
         </header>
 
         <div className="dialog-scroll min-h-0 overflow-y-auto p-5 space-y-4">
@@ -191,11 +210,15 @@ export const UploadModal: React.FC<UploadModalProps> = ({
           </label>
 
           {files.length > 0 && <section aria-label="Arquivos selecionados" className="space-y-2">
-            <div className="flex items-center justify-between gap-2 text-xs text-neutral-500"><span>{files.length} selecionado(s)</span><button type="button" disabled={isUploading} onClick={()=>setFiles([])} className="text-blue-600 dark:text-blue-400 disabled:opacity-40">Limpar lista</button></div>
+            <div className="flex items-center justify-between gap-2 text-xs text-neutral-500"><span>{files.length} selecionado(s)</span><button type="button" disabled={isUploading} onClick={()=>{setFiles([]);setReport(previous=>previous.filter(item=>item.outcome==='complete'));setDuplicateConsent(false);}} className="text-blue-600 dark:text-blue-400 disabled:opacity-40">Limpar lista</button></div>
+            {warnings.size>0&&<div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+              <p className="font-semibold">{warnings.size} possível(is) repetido(s)</p><p className="mt-1">Já há nomes iguais na biblioteca ou nesta seleção. Nome e tamanho não garantem conteúdo igual. Confira antes de continuar.</p>
+              <label className="mt-3 flex items-start gap-2"><input type="checkbox" checked={duplicateConsent} onChange={e=>setDuplicateConsent(e.target.checked)} className="mt-0.5"/><span>Conferi e quero enviar também os possíveis repetidos.</span></label>
+            </div>}
             <ul className="space-y-2">
               {files.map((file,index)=><li key={index} className="flex items-center gap-2 p-3 rounded-xl bg-neutral-100 dark:bg-neutral-800">
                 <FileText size={17} className="shrink-0 text-blue-500"/>
-                <span className="min-w-0 flex-1 truncate text-xs font-medium" title={file.name}>{file.name}</span>
+                <div className="min-w-0 flex-1"><span className="block truncate text-xs font-medium" title={file.name}>{file.name}</span>{warnings.has(index)&&<span className="mt-1 block text-[11px] text-amber-700 dark:text-amber-300">{warnings.get(index)==='selection'?'Repetido nesta seleção':warnings.get(index)==='library-exact'?'Mesmo nome e tamanho na biblioteca':'Nome já existe na biblioteca'}</span>}</div>
                 <span className="shrink-0 text-[11px] text-neutral-500">{file.size < 1048576 ? `${Math.ceil(file.size/1024)} KB` : `${(file.size/1048576).toFixed(1)} MB`}</span>
                 <button type="button" aria-label={`Remover ${file.name}`} disabled={isUploading} onClick={()=>removeFile(index)} className="flex h-11 w-11 shrink-0 items-center justify-center text-neutral-500 disabled:opacity-40"><X size={15}/></button>
               </li>)}
@@ -233,14 +256,21 @@ export const UploadModal: React.FC<UploadModalProps> = ({
             </div>)}
             <p className="text-xs leading-relaxed text-neutral-500 dark:text-neutral-400">Mantenha esta página aberta. Arquivos pequenos podem ser enviados em dupla; vídeos grandes usam a conexão um de cada vez.</p>
           </div>}
+          {!isUploading&&report.length>0&&<section aria-label="Resultado dos envios" className="space-y-3 rounded-2xl border border-neutral-200 p-3 dark:border-neutral-700">
+            <h3 className="text-sm font-bold">{files.length?(paused?'Envio pausado':'Envio interrompido'):'Envio concluído'}</h3>
+            <p role="status" className="text-xs text-neutral-600 dark:text-neutral-300">{report.filter(item=>item.outcome==='complete').length} disponível(is) na biblioteca · {files.length} pendente(s) nesta janela</p>
+            <ul className="space-y-2">{report.map((item,index)=><li key={index} className="rounded-xl bg-neutral-50 p-3 dark:bg-neutral-800"><p className="break-words text-xs font-semibold">{item.file.name}</p><p className={`mt-1 text-xs ${item.outcome==='complete'?'text-emerald-700 dark:text-emerald-300':'text-neutral-600 dark:text-neutral-300'}`}>{item.outcome==='complete'?'Disponível na biblioteca':item.outcome==='publication-pending'?'Chegou ao Drive. Falta confirmar a publicação; retomar não envia o arquivo novamente.':item.outcome==='waiting'?'Ainda não começou':item.outcome==='paused'?'Transferência pausada; pode retomar nesta página.':'Não foi possível concluir; pode tentar novamente.'}</p></li>)}</ul>
+            {files.length>0&&<p className="text-xs text-neutral-500">Só os pendentes serão retomados. Você pode fechar esta janela e voltar; mantenha a página aberta para conservar os arquivos selecionados.</p>}
+          </section>}
+          {offline&&<p role="status" className="rounded-xl bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">Sem conexão. Os arquivos desta página continuam na fila; retome quando a internet voltar.</p>}
           {uploadError && <p role="alert" className="rounded-xl bg-rose-50 dark:bg-rose-950/30 p-3 text-xs leading-relaxed text-rose-700 dark:text-rose-300">{uploadError}</p>}
         </div>
 
         <footer className="flex items-center justify-end gap-2 border-t border-neutral-100 dark:border-neutral-800 p-4 shrink-0">
-          <button type="button" onClick={()=>isUploading ? request.current?.abort() : onClose()} className="px-4 py-3 text-xs font-semibold text-neutral-600 dark:text-neutral-300">{isUploading ? 'Pausar' : 'Fechar'}</button>
-          <button type="button" onClick={handleStartUpload} disabled={isUploading || Boolean(recovering) || !files.length || !shareByLink} className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-500 px-5 py-3 text-xs font-bold text-white disabled:opacity-40 disabled:cursor-not-allowed">
+          <button type="button" disabled={Boolean(recovering)} onClick={()=>isUploading ? request.current?.abort() : onClose()} className="px-4 py-3 text-xs font-semibold text-neutral-600 dark:text-neutral-300">{isUploading ? 'Pausar' : 'Fechar'}</button>
+          <button type="button" onClick={handleStartUpload} disabled={isUploading || Boolean(recovering) || offline || !files.length || !shareByLink || warnings.size>0&&!duplicateConsent} className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-500 px-5 py-3 text-xs font-bold text-white disabled:opacity-40 disabled:cursor-not-allowed">
             {isUploading ? <Loader2 size={16} className="animate-spin"/> : <Upload size={16}/>}
-            {isUploading ? 'Enviando…' : uploadError ? 'Tentar novamente' : 'Enviar arquivos'}
+            {isUploading ? 'Enviando…' : report.length&&files.length ? `Retomar ${files.length} pendente(s)` : 'Enviar arquivos'}
           </button>
         </footer>
       </section>

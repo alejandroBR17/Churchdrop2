@@ -142,7 +142,7 @@ export default function App() {
     setIsRefreshing(false);setIsLoading(false);setLoadingStage('idle');
   };
   // Automatic reads preserve the current view; explicit refresh keeps its feedback.
-  const loadFiles = async (showLoadingSpinner = true, automatic = false):Promise<boolean|undefined> => {
+  const loadFiles = async (showLoadingSpinner = true, automatic = false, silent = false):Promise<boolean|undefined> => {
     if (preservationRequest.current || mutationCount.current) {if(!automatic)showToast('Aguarde a alteração terminar antes de atualizar.', 'info'); return;}
     if(automatic && listRequest.current)return;
     listRequest.current?.abort();
@@ -170,7 +170,7 @@ export default function App() {
       setItems(previous=>JSON.stringify(previous)===JSON.stringify(freshFiles)?previous:freshFiles);
       setSelectedIds(previous=>{const next=previous.filter(id=>ids.has(id));return next.length===previous.length?previous:next;});
       setListError('');
-      if (!showLoadingSpinner && !automatic) showToast('Lista atualizada.', 'success', 2500);
+      if (!showLoadingSpinner && !automatic && !silent) showToast('Lista atualizada.', 'success', 2500);
       return true;
     } catch {
       if (listRequest.current !== request || request.signal.aborted) return;
@@ -745,7 +745,7 @@ export default function App() {
       <UploadModal 
         isOpen={showUploadModal}
         onClose={() => setShowUploadModal(false)}
-        onSuccess={() => loadFiles(false)}
+        onSuccess={() => loadFiles(false,false,true)}
         showToast={showToast}
       />
 

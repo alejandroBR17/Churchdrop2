@@ -172,3 +172,13 @@ A marca aprovada foi vetorizada em contornos, mantendo o U com play e o desenho 
 Lateral, faixa de acesso, login, fundos das prévias dos cartões, visualizador e barras de áudio/seleção acompanham o tema. Superfícies usam cores claras por padrão; fundos escuros pertencem às variantes dark. A marca herda a cor do texto e usa o azul definido por `--brand-symbol` no tema. Vídeos e imagens mantêm as próprias cores.
 
 A preferência salva prevalece sobre o sistema e continua após recarregar ou sair. A barra do navegador recebe a cor do tema, inclusive na tela de login antes de montar o App. O manifest usa uma superfície clara como padrão de abertura; o tema escolhido é aplicado pelo documento.
+
+## Autorização entre aparelhos e lista de acessos
+
+A tela de entrada permite solicitar acesso por QR ao celular conectado. O caminho inverso começa em Aparelhos conectados: o PC emite um convite QR, o novo celular solicita a entrada e o PC confirma. As duas direções dispensam senha/código digitado quando já existe um aparelho conectado. A lista identifica navegador, aparelho, último uso e validade, com encerramento remoto confirmado e revogação dos acessos derivados. A ativação requer atualizar a implantação Apps Script existente com `backend/drive/Code.gs`; consulte [as instruções](docs/autorizar-aparelhos.md). Até isso ocorrer, o app mantém a senha e oculta os recursos ainda indisponíveis.
+
+## Revisão de envios e possíveis repetidos
+
+A janela de envio conserva o resultado por arquivo: disponível na biblioteca, chegou ao Drive mas falta publicar, transferência interrompida ou ainda não iniciada. Retomar opera apenas sobre os pendentes; os arquivos concluídos permanecem no resumo. As mesmas sessões e arquivos preparados são reutilizados nesta página, inclusive em tentativas de publicação sem nova transferência. Perder a conexão pausa a fila; voltar à internet não inicia envios automaticamente. Fechar/reabrir a janela preserva a fila, mas recarregar a página perde a seleção de arquivos locais; envios completos pendentes de publicação continuam recuperáveis pela biblioteca.
+
+Arquivos escolhidos são comparados por nome normalizado e tamanho com a biblioteca inteira e a seleção atual. Possíveis repetições recebem aviso e exigem revisão explícita antes do envio. Arquivos com o mesmo nome e tamanho podem ter conteúdos diferentes: não se promete comparação binária, não se calcula hash de vídeos inteiros e nada é apagado ou substituído automaticamente.

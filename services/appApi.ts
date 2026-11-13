@@ -1,3 +1,8 @@
+export class AppApiError extends Error {
+  status:number;
+  constructor(message:string,status:number){super(message);this.name='AppApiError';this.status=status;}
+}
+
 /** Wait without keeping a cancelled library request alive. */
 function waitForReadRetry(signal: AbortSignal): Promise<void> {
   signal.throwIfAborted();
@@ -46,7 +51,7 @@ export async function appApi<T>(path: '/api/session' | '/api/media', body?: obje
       controller.signal.throwIfAborted();
       if (response.status === 401 && typeof window !== 'undefined') window.dispatchEvent(new Event('univer-session-expired'));
       if (!response.ok || !value || typeof value !== 'object' || value.status === 'error') {
-        throw new Error(typeof value?.error === 'string' ? value.error : 'Não foi possível concluir. Tente novamente.');
+        throw new AppApiError(typeof value?.error === 'string' ? value.error : 'Não foi possível concluir. Tente novamente.',response.status);
       }
       return value as T;
     }

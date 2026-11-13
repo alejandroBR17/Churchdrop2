@@ -1,3 +1,7 @@
+import {PairingModal} from './PairingModal';
+import {ConnectedDevicesModal} from './ConnectedDevicesModal';
+import {initialPairLink,pairLinkFromHash} from '../services/pairing';
+import type {PairState} from '../services/pairing';
 import {Brand} from './Brand';
 import React, {useEffect, useRef, useState} from 'react';
 import {Link2, Loader2, LogOut, ShieldCheck} from 'lucide-react';
@@ -6,8 +10,8 @@ import {clearOperatorData} from '../services/churchService';
 import {clearAccessLink, hasAccessLink, usePendingAccessLink} from '../services/accessLink';
 import {PersonalAccessModal} from './PersonalAccessModal';
 
-type Session = {enabled: boolean; authenticated: boolean; remembered?: boolean; expiresAt?: number};
-type AccessResult = {success?: boolean; remembered?: boolean; expiresAt?: number};
+type Session = {enabled: boolean; authenticated: boolean; remembered?: boolean; expiresAt?: number; deviceAccess?:boolean};
+type AccessResult = {success?: boolean; remembered?: boolean; expiresAt?: number; deviceAccess?:boolean};
 function rememberPreference() {try {return localStorage.getItem('univer-remember-device') === '1';} catch {return false;}}
 function savePreference(remember:boolean) {try {localStorage.setItem('univer-remember-device', remember?'1':'0');} catch { /* A blocked preference must not break access. */ }}
 export function AccessGate({children}: {children: React.ReactNode}) {
@@ -20,6 +24,13 @@ export function AccessGate({children}: {children: React.ReactNode}) {
   const [remembering, setRemembering] = useState(false);
   const [error, setError] = useState('');
   const [showLink,setShowLink] = useState(false);
+  const [pairLink,setPairLink]=useState(initialPairLink);
+  const [pairMode,setPairMode]=useState<'request'|'invite'|'approve'|'join'|null>(null);
+  const [showDevices,setShowDevices]=useState(false);
+  const [deviceAccess,setDeviceAccess]=useState(false);
+  const closePair=()=>{setPairMode(null);setPairLink(null);};
+  const pairAuthorized=(result:PairState)=>{savePreference(result.remembered===true);setSessionInfo({...result,deviceAccess:true});setDeviceAccess(true);setState('open');setCode('');closePair();};
+  useEffect(()=>{const changed=()=>{const link=pairLinkFromHash();if(link){setPairMode(null);setPairLink(link);}};window.addEventListener('hashchange',changed);return()=>window.removeEventListener('hashchange',changed);},[]);
   const checking = useRef<AbortController>();
   async function check() {
     checking.current?.abort(); const controller = new AbortController(); checking.current = controller;
@@ -31,9 +42,10 @@ export function AccessGate({children}: {children: React.ReactNode}) {
           const result=await usePendingAccessLink();
           if(controller.signal.aborted)return;
           if(result.success!==true)throw new Error('Link unavailable');
-          setSessionInfo(result);setState('open');setNotice('Acesso pelo seu link. Em aparelho emprestado, use Sair ao terminar.');return;
+          setSessionInfo(result);setDeviceAccess(session.deviceAccess===true);setState('open');setNotice('Acesso pelo seu link. Em aparelho emprestado, use Sair ao terminar.');return;
         }
         if(session.authenticated)clearAccessLink();
+        setDeviceAccess(session.deviceAccess===true);
         setSessionInfo(session);
         setState(!session.enabled ? 'preparing' : session.authenticated ? 'open' : 'locked');
       }
@@ -41,7 +53,7 @@ export function AccessGate({children}: {children: React.ReactNode}) {
   }
   useEffect(() => {
     clearOperatorData(); void check();
-    const expired = () => {clearOperatorData(); setShowLink(false);setCode(''); setState('locked'); setError('Sua sessão terminou. Entre novamente.');};
+    const expired = () => {clearOperatorData(); setShowLink(false);setShowDevices(false);setPairMode(null);setCode(''); setState('locked'); setError('Sua sessão terminou. Entre novamente.');};
     window.addEventListener('univer-session-expired', expired);
     return () => {checking.current?.abort(); window.removeEventListener('univer-session-expired', expired);};
   }, []);
@@ -52,7 +64,7 @@ export function AccessGate({children}: {children: React.ReactNode}) {
       if (result.success !== true) throw new Error('O acesso ainda está sendo preparado. Tente novamente mais tarde.');
       savePreference(remember); setSessionInfo(result); setNotice('');
       clearAccessLink();
-      clearOperatorData(); setCode(''); setState('open');
+      clearOperatorData(); setCode(''); await check();
     } catch (cause) {setError(cause instanceof Error ? cause.message : 'Não foi possível entrar.');}
     finally {setBusy(false);}
   }
@@ -69,7 +81,7 @@ export function AccessGate({children}: {children: React.ReactNode}) {
   }
   async function leave() {
     setBusy(true); setError('');
-    try { await appApi('/api/session', undefined, {method: 'DELETE'}); clearOperatorData(); clearAccessLink();setShowLink(false);savePreference(false); setRemember(false); setSessionInfo({}); setNotice(''); setState('locked'); }
+    try { await appApi('/api/session', undefined, {method: 'DELETE'}); clearOperatorData(); clearAccessLink();setShowLink(false);setShowDevices(false);savePreference(false); setRemember(false); setSessionInfo({}); setNotice(''); setState('locked'); }
     catch {setError('Não foi possível encerrar a sessão. Tente novamente antes de devolver o aparelho.');}
     finally {setBusy(false);}
   }
@@ -81,16 +93,21 @@ export function AccessGate({children}: {children: React.ReactNode}) {
       {!sessionInfo.remembered && <button type="button" onClick={rememberDevice} disabled={busy} className="rounded-lg border border-blue-500/50 px-3 py-2 text-blue-700 dark:text-blue-200 disabled:opacity-50">{remembering?'Salvando…':'Lembrar 7 dias'}</button>}
       <button type="button" onClick={leave} disabled={busy} className="flex items-center gap-2 rounded-lg px-3 py-2 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 disabled:opacity-50"><LogOut size={16}/> {busy && !remembering ? 'Saindo…' : 'Sair deste aparelho'}</button>
       </div>
+      {deviceAccess&&<button type="button" onClick={()=>setShowDevices(true)} className="rounded-lg border border-neutral-200 px-3 py-2 dark:border-neutral-700">Aparelhos conectados</button>}
     </div>
     {notice && <p role="status" className="bg-blue-50 text-blue-900 dark:bg-blue-950 dark:text-blue-100 px-4 py-2 text-xs">{notice}</p>}
     {error && <p role="alert" className="bg-rose-50 text-rose-800 p-3 text-sm">{error}</p>}
     {children}
     {showLink&&<PersonalAccessModal onClose={()=>setShowLink(false)}/>}
+    {showDevices&&<ConnectedDevicesModal onClose={()=>setShowDevices(false)} onInvite={()=>{setShowDevices(false);setPairMode('invite');}} onRevoked={()=>{clearOperatorData();setShowDevices(false);void check();}}/>}
+    {(pairMode||pairLink?.mode==='approve')&&<PairingModal key={pairMode||pairLink?.mode} mode={pairMode||'approve'} link={pairLink||undefined} onClose={closePair} onAuthorized={pairAuthorized}/>}
+
   </>;
   return <main className="access-page min-h-screen flex items-center justify-center p-5">
     <section className="access-card w-full max-w-md rounded-3xl border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8 shadow-2xl">
       <Brand className="mb-7 h-auto w-64 max-w-full text-slate-900 dark:text-white"/>
       <h1 className="text-2xl font-bold mb-3">{state === 'preparing' ? 'Preparando seu novo espaço' : 'Suas mídias, no lugar certo'}</h1>
+      {pairLink?.mode==='approve'&&<p className="mb-4 rounded-xl bg-blue-50 p-3 text-sm text-blue-800 dark:bg-blue-950/30 dark:text-blue-200">Entre neste aparelho para conferir e autorizar a entrada solicitada.</p>}
       {state === 'checking' ? <p role="status" className="flex items-center gap-2 text-neutral-600 dark:text-neutral-400"><Loader2 size={18} className="animate-spin"/> Verificando acesso…</p> : state === 'locked' ? <form onSubmit={enter} className="space-y-5">
         {typeof window !== 'undefined' && window.location.hostname.endsWith('.vercel.app') && window.location.hostname !== 'churchdrop2.vercel.app' && <a href="https://churchdrop2.vercel.app/" className="block rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/40 p-3 text-sm text-blue-700 dark:text-blue-200">Usar o endereço fixo do app →<span className="mt-1 block text-xs text-neutral-600 dark:text-neutral-400">O acesso salvo em links de prévia não passa para outro endereço.</span></a>}
         <p className="text-sm leading-relaxed text-neutral-600 dark:text-neutral-400">Use a senha de acesso para enviar e organizar os materiais. Não precisa entrar com uma conta Google.</p>
@@ -102,11 +119,13 @@ export function AccessGate({children}: {children: React.ReactNode}) {
         <label className="flex items-start gap-3 text-sm text-neutral-700 dark:text-neutral-300"><input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} className="mt-1"/><span>Este aparelho é meu · lembrar por 7 dias<span className="block mt-1 text-xs text-neutral-500">Atualizações no link fixo mantêm o acesso. Em aparelho emprestado, deixe desmarcado e use Sair ao terminar.</span></span></label>
         {error && <p role="alert" className="text-sm text-rose-700 dark:text-rose-300">{error}</p>}
         <button disabled={busy || code.length < 6 || code.length > 64} className="w-full rounded-xl bg-blue-600 text-white hover:bg-blue-500 px-4 py-3 font-semibold disabled:opacity-50">{busy ? 'Verificando…' : 'Entrar'}</button>
+        {deviceAccess&&<button type="button" disabled={busy} onClick={()=>setPairMode('request')} className="secondary-button w-full">Entrar pelo celular · QR Code</button>}
       </form> : <>
         <p className="text-sm leading-relaxed text-neutral-600 dark:text-neutral-400">{state === 'preparing' ? 'Estamos conectando o acesso seguro e o novo armazenamento. Nenhum arquivo antigo será alterado.' : error}</p>
         <button onClick={check} className="mt-6 w-full rounded-xl bg-blue-600 text-white px-4 py-3 font-semibold">Verificar novamente</button>
         {state==='error'&&<button onClick={()=>{clearAccessLink();setError('');setState('locked');}} className="mt-3 w-full rounded-xl border border-neutral-300 dark:border-neutral-700 px-4 py-3 text-sm">Entrar com a senha</button>}
       </>}
     </section>
+    {(pairMode||pairLink?.mode==='join')&&<PairingModal key={pairMode||pairLink?.mode} mode={pairMode||'join'} link={pairLink||undefined} onClose={closePair} onAuthorized={pairAuthorized}/>}
   </main>;
 }
