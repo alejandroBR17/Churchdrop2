@@ -159,3 +159,9 @@ A prévia de PDF mantém Abrir PDF, Baixar PDF e Recarregar prévia disponíveis
 Espaço reproduz/pausa a mídia ativa quando o foco não está em um botão, campo ou controle nativo. Setas navegam no visualizador e respeitam os controles de áudio/vídeo em foco. Escape fecha o visualizador, QR ou ajuda de atalhos. A busca com / e a seleção com Ctrl/Cmd+A não agem por trás de janelas abertas nem durante digitação. A ajuda inclui Shift+clique, informa que Ctrl/Cmd+A seleciona todos os resultados do filtro e permite rolagem em telas pequenas.
 
 O QR é gerado localmente e compartilha o endereço público fixo quando aberto em uma implantação Vercel, evitando enviar o celular a uma prévia protegida. Em domínios próprios e testes locais, preserva origem e caminho, removendo credenciais, parâmetros e fragmentos. O mesmo endereço aparece no QR, no campo e na cópia. As instruções usam a senha de acesso atual.
+
+## Identidade visual Univer Mídia
+
+A marca aprovada foi vetorizada em contornos, mantendo o U com play e o desenho do nome, sem depender de fontes. `public/brand` contém símbolo, nome e composição completa em SVG: original azul/escuro, azul, branco, escuro e azul claro/branco para fundo escuro. Arquivos `*-currentcolor.svg` permitem recolorir a marca por CSS quando inseridos inline. PNGs transparentes e o kit completo também estão disponíveis nesse diretório.
+
+`components/Brand.tsx` reutiliza os mesmos contornos com `variant="symbol"`, `"wordmark"` ou `"combined"`. O texto herda `currentColor`; o símbolo aceita `symbolColor` ou a variável `--brand-symbol`. Cabeçalho, menu, lateral e tela de acesso usam esse componente. Favicon, ícones de instalação e Apple Touch Icon usam arquivos locais; o ícone maskable tem margem própria para os recortes do sistema. Não há mais dependência da antiga imagem do Imgur.

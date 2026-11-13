@@ -1,3 +1,4 @@
+import {Brand} from './Brand';
 import React from 'react';
 import { 
   Home, Video, ImageIcon, FileText, Keyboard, DownloadCloud, Sun, Moon, 
@@ -51,9 +52,9 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   ] as const;
   return (
     <aside className="workspace-sidebar hidden md:flex fixed inset-y-0 left-0 z-40 w-64 flex-col">
-      <div className="px-6 pt-8 pb-7 flex items-center gap-3">
-        <img src="https://imgur.com/XaqB3Ri.png" alt="Logo Univer Mídia" className="w-11 h-11 object-contain"/>
-        <div><p className="text-lg font-bold tracking-tight">Univer<span className="text-blue-400"> Mídia</span></p><p className="mt-1 text-[11px] text-slate-400">Da sua mão para a projeção.</p></div>
+      <div className="px-6 pt-8 pb-7">
+        <Brand className="h-auto w-full text-white" symbolColor="#60a5fa"/>
+        <p className="mt-3 text-[11px] text-slate-400">Da sua mão para a projeção.</p>
       </div>
       <nav aria-label="Biblioteca e ferramentas" className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 space-y-1">
         <p className="eyebrow px-3 pb-3">Biblioteca</p>

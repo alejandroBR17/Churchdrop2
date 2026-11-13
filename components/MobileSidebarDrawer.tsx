@@ -1,3 +1,4 @@
+import {Brand} from './Brand';
 import {useBodyScrollLock} from '../hooks/useBodyScrollLock';
 import React from 'react';
 import { 
@@ -53,18 +54,9 @@ export const MobileSidebarDrawer: React.FC<MobileSidebarDrawerProps> = ({
         <div>
           <div className="p-5 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between bg-neutral-50/50 dark:bg-neutral-900/50">
             <div className="flex items-center gap-2.5">
-              <img 
-                src="https://imgur.com/XaqB3Ri.png" 
-                alt="Logo" 
-                className="w-8 h-8 object-contain"
-              />
-              <div className="flex flex-col">
-                <span className="text-sm font-extrabold text-neutral-900 dark:text-white uppercase leading-none">
-                  Univer Mídia
-                </span>
-                <span className={`text-[9px] font-bold tracking-widest uppercase ${GOLD_TEXT_CLASS}`}>
-                  Menu Principal
-                </span>
+              <div className="min-w-0 flex-1">
+                <Brand className="h-auto w-48 max-w-full text-slate-900 dark:text-white"/>
+                <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-neutral-500">Menu principal</p>
               </div>
             </div>
             <button aria-label="Fechar menu"

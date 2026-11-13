@@ -1,5 +1,6 @@
+import {Brand} from './Brand';
 import React, {useEffect, useRef, useState} from 'react';
-import {KeyRound, Link2, Loader2, LogOut, ShieldCheck} from 'lucide-react';
+import {Link2, Loader2, LogOut, ShieldCheck} from 'lucide-react';
 import {appApi} from '../services/appApi';
 import {clearOperatorData} from '../services/churchService';
 import {clearAccessLink, hasAccessLink, usePendingAccessLink} from '../services/accessLink';
@@ -88,8 +89,7 @@ export function AccessGate({children}: {children: React.ReactNode}) {
   </>;
   return <main className="access-page min-h-screen bg-neutral-950 text-neutral-100 flex items-center justify-center p-5">
     <section className="access-card w-full max-w-md rounded-3xl border border-neutral-800 bg-neutral-900 p-6 sm:p-8 shadow-2xl">
-      <div className="w-12 h-12 rounded-2xl bg-blue-500/15 text-blue-400 flex items-center justify-center mb-5"><KeyRound size={24}/></div>
-      <p className="text-xs uppercase tracking-widest text-amber-400 mb-2">Univer Mídia</p>
+      <Brand className="mb-7 h-auto w-64 max-w-full text-white" symbolColor="#60a5fa"/>
       <h1 className="text-2xl font-bold mb-3">{state === 'preparing' ? 'Preparando seu novo espaço' : 'Suas mídias, no lugar certo'}</h1>
       {state === 'checking' ? <p role="status" className="flex items-center gap-2 text-neutral-400"><Loader2 size={18} className="animate-spin"/> Verificando acesso…</p> : state === 'locked' ? <form onSubmit={enter} className="space-y-5">
         {typeof window !== 'undefined' && window.location.hostname.endsWith('.vercel.app') && window.location.hostname !== 'churchdrop2.vercel.app' && <a href="https://churchdrop2.vercel.app/" className="block rounded-xl border border-blue-800 bg-blue-950/40 p-3 text-sm text-blue-200">Usar o endereço fixo do app →<span className="mt-1 block text-xs text-neutral-400">O acesso salvo em links de prévia não passa para outro endereço.</span></a>}
