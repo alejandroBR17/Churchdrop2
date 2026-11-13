@@ -132,3 +132,10 @@ O resumo mostra arquivos e eventos dos resultados filtrados, acompanhado de Most
 Com a aba visível e conexão disponível, o app consulta novidades vinte segundos após cada atualização automática concluída. Voltar à aba ou recuperar a conexão também solicita uma consulta, com intervalo mínimo de cinco segundos e sem sobrepor leituras. Abas ocultas e telas de envio/edição interrompem novas consultas; falhas mantêm a última lista e aumentam o intervalo até dois minutos. Sair da conta remove os agendamentos e cancela a leitura em andamento.
 
 A atualização preserva busca, tipo, grupos recolhidos e a seleção dos arquivos que ainda existem. Se surgir um dia mais recente enquanto há fotos selecionadas, mantém o dia atual explicitamente selecionado para não escondê-las. Leituras antigas são canceladas antes de renomear ou excluir para não sobrescrever uma alteração confirmada. Cartões usam identificadores estáveis, evitando remontagem quando novos arquivos mudam a ordem da lista. Não há avisos de sucesso repetidos nem download automático dos materiais.
+
+
+## Marcação de download solicitado
+
+Os cartões indicam Download solicitado depois que o app encaminha o pedido ao navegador. Pedidos individuais, pela fila ou pelo visualizador usam o mesmo registro. A marca não confirma que o arquivo foi salvo e não bloqueia uma nova tentativa. Arquivos que ainda estão aguardando na fila ou cujo pedido falhou antes de iniciar não são marcados.
+
+As marcações ficam apenas na memória desta aba e sobrevivem a filtros e atualizações automáticas. Limpar marcações apaga somente esses indicadores, sem cancelar downloads nem alterar arquivos. Sair ou recarregar a página remove o registro. Nenhum nome de arquivo, link ou histórico de download é persistido no armazenamento do navegador ou no servidor.

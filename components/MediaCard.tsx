@@ -8,6 +8,7 @@ import { MediaItem } from '../types';
 interface MediaCardProps {
   item: MediaItem;
   isSelected: boolean;
+  downloadRequested?: boolean;
   hasSelection: boolean;
   onToggle: (id: string, e?: React.MouseEvent) => void;
   onDelete: (id: string) => void;
@@ -22,7 +23,8 @@ interface MediaCardProps {
 
 export const MediaCard: React.FC<MediaCardProps> = ({ 
   item, 
-  isSelected, 
+  isSelected,
+  downloadRequested = false,
   hasSelection, 
   onToggle, 
   onDelete, 
@@ -166,6 +168,8 @@ export const MediaCard: React.FC<MediaCardProps> = ({
           </div>
         </div>
 
+        {downloadRequested && <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-300" title="Solicitado nesta aba. Confira o salvamento nos downloads do navegador."><CheckCircle size={14} className="shrink-0"/>Download solicitado</p>}
+
         {onPreserve && <button type="button"
           aria-pressed={Boolean(item.preserved)}
           aria-label={`${item.preserved ? 'Remover preservação de' : 'Preservar'} ${item.name}`}
@@ -208,7 +212,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({
           <button 
             onClick={(e) => { e.stopPropagation(); onDownload(item.downloadUrl || item.url); }}
             className="flex items-center gap-1 px-2.5 py-1 bg-neutral-100 hover:bg-univer-blue dark:bg-neutral-800 dark:hover:bg-univer-blue text-neutral-700 hover:text-white dark:text-neutral-300 dark:hover:text-white text-[11px] font-bold rounded-lg transition-colors"
-            title="Baixar Arquivo"
+            title={downloadRequested?'Solicitar download novamente':'Baixar Arquivo'}
           >
             <Download size={13} />
             <span>Baixar</span>

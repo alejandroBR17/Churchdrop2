@@ -1,3 +1,4 @@
+import {recordDownloadRequest,clearDownloadRequests} from './downloadRequests.ts';
 /** Browser-native downloads keep large video bytes out of JS memory and Vercel. */
 export function browserDownloadUrl(value: string): string {
   let url: URL;
@@ -12,7 +13,7 @@ export function browserDownloadUrl(value: string): string {
 }
 
 const active = new Set<() => void>();
-export function clearNativeDownloads() {for(const cleanup of [...active]) cleanup();}
+export function clearNativeDownloads() {for(const cleanup of [...active]) cleanup();clearDownloadRequests();}
 
 /** Requests a download; browsers do not expose whether the user saved or cancelled it. */
 export function requestNativeDownload(value: string, name = 'Arquivo') {
@@ -32,4 +33,5 @@ export function requestNativeDownload(value: string, name = 'Arquivo') {
   anchor.referrerPolicy = 'no-referrer';
   try {document.body.appendChild(anchor);anchor.click();} catch(error) {cleanup();throw error;}
   finally {anchor.remove();}
+  recordDownloadRequest(new URL(url).searchParams.get('id')!);
 }
