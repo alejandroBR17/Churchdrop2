@@ -1,5 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';import vm from 'node:vm';
 import {readFileSync} from 'node:fs';import {createHmac,scryptSync} from 'node:crypto';
+import {sealData} from 'iron-session';
 import {DriveBridgeError} from '../server/driveBridge.mjs';
 import {createAccessHandler} from '../server/access.mjs';import {requireAccess} from '../server/access.mjs';
 const source=readFileSync(new URL('../backend/drive/Code.gs',import.meta.url),'utf8');
@@ -105,4 +106,11 @@ test('network failure does not downgrade legacy-cookie checks; explicitly unsupp
 test('logging out a legacy cookie after activation also revokes its deterministic device record',async()=>{
  const h=harness(),p=h.client();h.ready(false);await p.login();const cookie=[...p.jar].map(([k,v])=>`${k}=${v}`).join('; ');h.ready(true);h.resetCache();assert.equal((await p.call(undefined,'DELETE')).status,200);
  await assert.rejects(requireAccess(new Request(origin+'/api/media',{headers:{cookie}}),new Headers(),h.options),e=>e.status===401);
+});
+
+test('truly old cookies without a seed cannot evade revocation through alternate valid cookie encoding',async()=>{
+ const h=harness(),legacy=h.client(),manager=h.client();const password=createHmac('sha256',environment.UNIVER_DRIVE_SERVER_SECRET).update(`univer-session-v1\n${environment.UNIVER_ACCESS_CODE_HASH}`).digest('hex');
+ const token=await sealData({authorized:true,remembered:true,expiresAt:h.options.now()+7*86400000},{password,ttl:604800});legacy.jar.set('__Host-univer-session',token);assert.equal((await legacy.call(undefined,'GET')).data.authenticated,true);await manager.login();const current=(await legacy.call({action:'devices'})).data.devices.find(d=>d.current);await manager.call({action:'revokeDevice',id:current.id});
+ const alternate='%'+token.charCodeAt(0).toString(16)+token.slice(1);
+ await assert.rejects(requireAccess(new Request(origin+'/api/media',{headers:{cookie:'__Host-univer-session='+alternate}}),new Headers(),h.options),e=>e.status===401);
 });

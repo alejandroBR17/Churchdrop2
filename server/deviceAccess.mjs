@@ -1,6 +1,7 @@
 import {createHmac, randomBytes} from 'node:crypto';
 import {HttpError} from './http.mjs';
 import {DriveBridgeError} from './driveBridge.mjs';
+import {webCookies} from 'iron-session';
 
 const capabilityStores = new WeakMap();
 export const PAIR_TTL_MS = 5 * 60000;
@@ -46,7 +47,9 @@ export async function registerDevice(request, session, options) {
   if(session.deviceId)return true;
   if (!await hasDeviceAccess(request,options)) return false;
   // A replay of a pre-upgrade cookie resolves to the same revocable record.
-  const oldCookie = (request.headers.get('cookie') || '').split(';').map(p=>p.trim()).find(p=>p.startsWith('__Host-univer-session=')) || '';
+  // Use the same canonical parser as session decryption: alternate cookie
+  // encodings or duplicate headers cannot create another migration identity.
+  const oldCookie = '__Host-univer-session=' + (webCookies(request,new Headers()).read('__Host-univer-session') || '');
   const id = session.deviceId || deviceHash(session.deviceSeed || oldCookie, options.environment);
   const result = await deviceOperation({op:'register',id,label:deviceLabel(request),expiresAt:session.expiresAt,
     ...(session.linkHash?{linkHash:session.linkHash,linkExpiresAt:session.linkExpiresAt}:{})},request,options);
