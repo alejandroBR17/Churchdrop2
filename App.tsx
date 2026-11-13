@@ -436,7 +436,7 @@ export default function App() {
       />
 
       {/* Main Container Area */}
-      <div className="flex-1 md:pl-64 flex flex-col pb-24 md:pb-12">
+      <div className={`flex-1 md:pl-64 flex flex-col ${activeAudioItem ? 'pb-[32rem] md:pb-96' : selectedIds.length ? 'pb-48 md:pb-32' : 'pb-24 md:pb-12'}`}>
         
         {/* Sticky Header */}
         <Header 

@@ -152,7 +152,7 @@ O visualizador mostra Selecionar esta foto / Desmarcar esta foto e o total de ar
 
 ## Áudio, vídeo, PDF, atalhos e QR Code
 
-Áudio e vídeo compartilham controles nativos do navegador, com avanço na faixa, duração e reprodução inline no iPhone. O estado Reproduzindo só aparece após o evento real de reprodução; bloqueios de início automático pedem um toque, sem rejeições de Promise não tratadas. Abrir outro áudio/vídeo pausa o anterior; fechar libera sua fonte. Alterar a seleção não reinicia um vídeo pausado. Falhas oferecem nova tentativa, Drive e download. A barra de áudio sobe quando há uma seleção para deixar as ações de download acessíveis.
+Áudio e vídeo compartilham controles nativos do navegador, com avanço na faixa, duração e reprodução inline no iPhone. O estado Reproduzindo só aparece após o evento real de reprodução; bloqueios de início automático pedem um toque, sem rejeições de Promise não tratadas. Abrir outro áudio/vídeo pausa o anterior; fechar libera sua fonte. Alterar a seleção não reinicia um vídeo pausado. Falhas oferecem nova tentativa, Drive e download. A barra de áudio sobe quando há uma seleção para deixar as ações de download acessíveis. A lista reserva espaço de rolagem no fim enquanto o áudio ou a seleção estão ativos, permitindo acessar os últimos cartões acima das barras.
 
 A prévia de PDF mantém Abrir PDF, Baixar PDF e Recarregar prévia disponíveis. Após doze segundos sem resposta, avisa sobre a demora sem interromper o carregamento. O iframe do Google é de outra origem: seu evento load não confirma que o documento foi renderizado, por isso a alternativa para abrir o PDF permanece visível mesmo após esse evento.
 
