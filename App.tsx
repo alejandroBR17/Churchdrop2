@@ -1,3 +1,4 @@
+import {isTextEntry} from './services/keyboard';
 import {rangeSelection} from './services/rangeSelection';
 import {getDownloadRequests,subscribeDownloadRequests,clearDownloadRequests} from './services/downloadRequests';
 import {useLibrarySync} from './hooks/useLibrarySync';
@@ -193,26 +194,21 @@ export default function App() {
 
   useLibrarySync(()=>loadFiles(false,true),()=>syncContext.current.blocked||Boolean(listRequest.current||preservationRequest.current||mutationCount.current));
 
-  // Keyboard Shortcuts Listener
+  // Leave typing and open dialogs in control of their own keyboard shortcuts.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'a') {
-        if (!['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement).tagName) && !(e.target as HTMLElement).isContentEditable) {
-          e.preventDefault();
-          selectionAnchor.current=null;
-          setSelectedIds(filteredItems.map(i => i.id));
-          showToast(`${filteredItems.length} itens selecionados`, 'info');
-        }
+      if (e.defaultPrevented || isTextEntry(e.target) || document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'a' && !e.altKey) {
+        e.preventDefault();
+        selectionAnchor.current = null;
+        setSelectedIds(filteredItems.map(i => i.id));
+        showToast(`${filteredItems.length} itens selecionados`, 'info');
       }
-      if (e.key === '/') {
-        if (!['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement).tagName) && !(e.target as HTMLElement).isContentEditable) {
-          e.preventDefault();
-          const searchInput = document.getElementById('library-search') as HTMLInputElement;
-          if (searchInput) searchInput.focus();
-        }
+      if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        document.getElementById('library-search')?.focus();
       }
     };
-
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [items, searchTerm, activeFilter, resolvedDay]);
@@ -724,6 +720,7 @@ export default function App() {
       {/* Bottom Audio Player Bar */}
       <AudioPlayerBar 
         item={activeAudioItem}
+        raised={selectedIds.length > 0}
         onClose={() => setActiveAudioItem(null)}
         onDownload={handleDownload}
       />

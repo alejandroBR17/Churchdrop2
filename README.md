@@ -149,3 +149,13 @@ Marque o primeiro arquivo pelo círculo de seleção e use Shift + clique no úl
 ## Escolher fotos ampliadas
 
 O visualizador mostra Selecionar esta foto / Desmarcar esta foto e o total de arquivos na seleção. Passar para a próxima foto mantém as escolhas anteriores. Ao fechar, a mesma seleção aparece na biblioteca para Baixar separados; selecionar não inicia transferência. O botão Visualizar dos cartões permite conferir outra imagem com uma seleção já ativa. Selecionar uma foto posterior à primeira página revela seu cartão ao voltar à biblioteca.
+
+## Áudio, vídeo, PDF, atalhos e QR Code
+
+Áudio e vídeo compartilham controles nativos do navegador, com avanço na faixa, duração e reprodução inline no iPhone. O estado Reproduzindo só aparece após o evento real de reprodução; bloqueios de início automático pedem um toque, sem rejeições de Promise não tratadas. Abrir outro áudio/vídeo pausa o anterior; fechar libera sua fonte. Alterar a seleção não reinicia um vídeo pausado. Falhas oferecem nova tentativa, Drive e download. A barra de áudio sobe quando há uma seleção para deixar as ações de download acessíveis.
+
+A prévia de PDF mantém Abrir PDF, Baixar PDF e Recarregar prévia disponíveis. Após doze segundos sem resposta, avisa sobre a demora sem interromper o carregamento. O iframe do Google é de outra origem: seu evento load não confirma que o documento foi renderizado, por isso a alternativa para abrir o PDF permanece visível mesmo após esse evento.
+
+Espaço reproduz/pausa a mídia ativa quando o foco não está em um botão, campo ou controle nativo. Setas navegam no visualizador e respeitam os controles de áudio/vídeo em foco. Escape fecha o visualizador, QR ou ajuda de atalhos. A busca com / e a seleção com Ctrl/Cmd+A não agem por trás de janelas abertas nem durante digitação. A ajuda inclui Shift+clique, informa que Ctrl/Cmd+A seleciona todos os resultados do filtro e permite rolagem em telas pequenas.
+
+O QR é gerado localmente e compartilha o endereço público fixo quando aberto em uma implantação Vercel, evitando enviar o celular a uma prévia protegida. Em domínios próprios e testes locais, preserva origem e caminho, removendo credenciais, parâmetros e fragmentos. O mesmo endereço aparece no QR, no campo e na cópia. As instruções usam a senha de acesso atual.

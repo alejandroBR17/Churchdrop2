@@ -1,10 +1,13 @@
+import {MediaPlayback} from './MediaPlayback';
+import {PdfPreview} from './PdfPreview';
+import {useDialogEscape} from '../hooks/useDialogEscape';
+import {isTextEntry} from '../services/keyboard';
 import {ImagePreview} from './ImagePreview';
 import {useBodyScrollLock} from '../hooks/useBodyScrollLock';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   X, Download, ExternalLink, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, 
-  RotateCw, Maximize2, Minimize2, Copy, Check, FileText, Music, Video as VideoIcon,
-  Play, Pause, Volume2, VolumeX, Sparkles, Share2, CheckSquare, Square
+  RotateCw, Maximize2, Copy, Check, FileText, CheckSquare, Square
 } from 'lucide-react';
 import { MediaItem } from '../types';
 
@@ -37,16 +40,6 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
   const [copiedText, setCopiedText] = useState(false);
-  const [videoError, setVideoError] = useState(false);
-  
-  // Audio Controls
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [audioProgress, setAudioProgress] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [isMuted, setIsMuted] = useState(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-
   // Swipe Gestures for Mobile
   const [touchStartX, setTouchStartX] = useState(0);
   const [touchEndX, setTouchEndX] = useState(0);
@@ -54,19 +47,17 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
   useEffect(() => {
     if (!item) return;
     // Reset state on media item change
-    setVideoError(false);
-    setIsPlaying(false);
-    setAudioProgress(0);
     setCopiedText(false);
 
   }, [item?.id]);
   useEffect(() => {
     if(!item)return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.defaultPrevented || isTextEntry(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.target instanceof Element && e.target.closest('audio, video')) return;
       if (item.type === 'image' && zoom > 1) return;
-      if (e.key === 'ArrowRight' && hasNext) onNext();
-      if (e.key === 'ArrowLeft' && hasPrev) onPrev();
+      if (e.key === 'ArrowRight' && hasNext) {e.preventDefault();onNext();}
+      if (e.key === 'ArrowLeft' && hasPrev) {e.preventDefault();onPrev();}
     };
 
     window.addEventListener('keydown', handleKeyDown);
@@ -74,24 +65,26 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
   }, [item, hasNext, hasPrev, zoom, onClose, onNext, onPrev]);
   useEffect(()=>{setZoom(1);setRotation(0);setTouchStartX(0);setTouchEndX(0);},[item?.id]);
   useBodyScrollLock(Boolean(item));
+  useDialogEscape(Boolean(item), onClose);
   if (!item) return null;
   const selectionTarget=item.type==='image'?'esta foto':'este arquivo';
 
-  const handleCopyText = (content?: string) => {
+  const handleCopyText = async (content?: string) => {
     if (!content) return;
-    navigator.clipboard.writeText(content);
+    try { await navigator.clipboard.writeText(content); }
+    catch {showToast("Não foi possível copiar o texto. Tente novamente.", "error");return;}
     setCopiedText(true);
     showToast('Texto copiado para a área de transferência!', 'success');
     setTimeout(() => setCopiedText(false), 2000);
   };
 
   const handleTouchStart = (e: React.TouchEvent) => {
-    if(e.targetTouches.length!==1 || (item.type==='image'&&zoom>1)){setTouchStartX(0);setTouchEndX(0);return;}
+    if(['audio','video','pdf'].includes(item.type)||e.targetTouches.length!==1 || (item.type==='image'&&zoom>1)){setTouchStartX(0);setTouchEndX(0);return;}
     setTouchEndX(0);setTouchStartX(e.targetTouches[0].clientX);
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
-    if(e.targetTouches.length!==1 || (item.type==='image'&&zoom>1)){setTouchStartX(0);setTouchEndX(0);return;}
+    if(['audio','video','pdf'].includes(item.type)||e.targetTouches.length!==1 || (item.type==='image'&&zoom>1)){setTouchStartX(0);setTouchEndX(0);return;}
     setTouchEndX(e.targetTouches[0].clientX);
   };
 
@@ -102,23 +95,6 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
     if (diffX < -50 && hasPrev) onPrev();
     setTouchStartX(0);
     setTouchEndX(0);
-  };
-
-  const toggleAudioPlay = () => {
-    if (!audioRef.current) return;
-    if (isPlaying) {
-      audioRef.current.pause();
-      setIsPlaying(false);
-    } else {
-      audioRef.current.play();
-      setIsPlaying(true);
-    }
-  };
-
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
   return (
@@ -212,128 +188,9 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
           <ImagePreview key={item.id} src={item.url} name={item.name} zoom={zoom} rotation={rotation}/>
         )}
 
-        {/* VIDEO VIEWER */}
-        {item.type === 'video' && (
-          <div className="w-full max-w-4xl max-h-[80vh] flex flex-col items-center justify-center bg-black rounded-2xl overflow-hidden shadow-2xl border border-neutral-800">
-            {videoError ? (
-              <div className="p-8 text-center max-w-md">
-                <VideoIcon size={48} className="text-amber-400 mx-auto mb-3" />
-                <h3 className="text-lg font-bold text-white mb-2">Reprodução Direta Indisponível</h3>
-                <p className="text-xs text-neutral-400 mb-6">
-                  Este vídeo requer download direto ou abertura no Google Drive.
-                </p>
-                <div className="flex justify-center gap-3">
-                  {!item.id.startsWith('temp_') && (
-                    <button 
-                      onClick={() => window.open(`https://drive.google.com/file/d/${encodeURIComponent(item.id)}/view`, '_blank', 'noopener,noreferrer')}
-                      className="px-4 py-2 bg-white text-black font-bold rounded-xl text-xs hover:bg-neutral-200 transition-colors"
-                    >
-                      Abrir no Google Drive
-                    </button>
-                  )}
-                  <button 
-                    onClick={() => onDownload(item.downloadUrl || item.url)}
-                    className="px-4 py-2 bg-univer-blue text-white font-bold rounded-xl text-xs hover:bg-blue-600 transition-colors"
-                  >
-                    Baixar Vídeo
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <video 
-                controls 
-                playsInline
-                ref={(el) => {
-                  if (el) {
-                    el.play().catch(() => {
-                      // Autoplay failed or was blocked by browser policy
-                    });
-                  }
-                }}
-                onError={(e) => {
-                  e.stopPropagation();
-                  setVideoError(true);
-                }}
-                src={item.downloadUrl || item.url} 
-                className="w-full max-h-[75vh] object-contain"
-              >
-                Seu navegador não suporta a reprodução deste vídeo.
-              </video>
-            )}
-          </div>
-        )}
-
-        {/* AUDIO VIEWER */}
-        {item.type === 'audio' && (
-          <div className="w-full max-w-lg bg-neutral-900 border border-neutral-800 p-8 rounded-3xl shadow-2xl flex flex-col items-center text-center">
-            <div className="w-24 h-24 rounded-full bg-purple-950/60 border-2 border-purple-500/40 flex items-center justify-center text-purple-400 mb-6 shadow-xl animate-pulse">
-              <Music size={44} />
-            </div>
-
-            <h3 className="text-lg font-bold text-white mb-1 line-clamp-1">{item.name}</h3>
-            <span className="text-xs text-neutral-400 font-semibold mb-6">{item.eventName}</span>
-
-            <audio 
-              ref={audioRef} 
-              src={item.downloadUrl || item.url} 
-              onTimeUpdate={() => {
-                if (!audioRef.current) return;
-                setCurrentTime(audioRef.current.currentTime);
-                setDuration(audioRef.current.duration || 0);
-                setAudioProgress((audioRef.current.currentTime / (audioRef.current.duration || 1)) * 100);
-              }}
-              onEnded={() => setIsPlaying(false)}
-            />
-
-            {/* Audio Progress Bar */}
-            <div className="w-full mb-6">
-              <input 
-                type="range" 
-                min="0" 
-                max="100" 
-                value={audioProgress || 0}
-                onChange={(e) => {
-                  const pct = parseFloat(e.target.value);
-                  setAudioProgress(pct);
-                  if (audioRef.current && duration) {
-                    audioRef.current.currentTime = (pct / 100) * duration;
-                  }
-                }}
-                className="w-full h-1.5 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-purple-500"
-              />
-              <div className="flex justify-between text-[11px] font-mono text-neutral-400 mt-2">
-                <span>{formatTime(currentTime)}</span>
-                <span>{formatTime(duration)}</span>
-              </div>
-            </div>
-
-            {/* Play/Pause & Volume controls */}
-            <div className="flex items-center gap-6">
-              <button 
-                onClick={() => {
-                  setIsMuted(!isMuted);
-                  if (audioRef.current) audioRef.current.muted = !isMuted;
-                }}
-                className="p-3 text-neutral-400 hover:text-white transition-colors"
-              >
-                {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
-              </button>
-
-              <button 
-                onClick={toggleAudioPlay}
-                className="w-14 h-14 rounded-full bg-purple-600 hover:bg-purple-500 text-white flex items-center justify-center shadow-lg shadow-purple-600/40 transition-transform active:scale-95"
-              >
-                {isPlaying ? <Pause size={24} /> : <Play size={24} className="ml-1 fill-white" />}
-              </button>
-
-              <button 
-                onClick={() => onDownload(item.downloadUrl || item.url)}
-                className="p-3 text-neutral-400 hover:text-white transition-colors"
-                title="Baixar Áudio"
-              >
-                <Download size={20} />
-              </button>
-            </div>
+        {(item.type === 'video' || item.type === 'audio') && (
+          <div className="w-full max-w-4xl max-h-full overflow-y-auto">
+            <MediaPlayback key={item.id} item={item} onDownload={onDownload}/>
           </div>
         )}
 
@@ -359,16 +216,7 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
           </div>
         )}
 
-        {/* PDF VIEWER */}
-        {item.type === 'pdf' && (
-          <div className="w-full max-w-4xl h-full bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden shadow-2xl flex flex-col">
-            <iframe 
-              src={`https://docs.google.com/viewer?url=${encodeURIComponent(item.downloadUrl || item.url)}&embedded=true`}
-              className="w-full h-full border-0"
-              title="PDF Viewer"
-            />
-          </div>
-        )}
+        {item.type === 'pdf' && <PdfPreview key={item.id} item={item} onDownload={onDownload}/>}
 
 
       </div>

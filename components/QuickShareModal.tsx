@@ -1,7 +1,9 @@
+import {publicAppUrl} from '../services/publicAppUrl';
+import {useDialogEscape} from '../hooks/useDialogEscape';
 import {useBodyScrollLock} from '../hooks/useBodyScrollLock';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {QRCodeSVG} from 'qrcode.react';
-import { X, QrCode, Copy, Check, Smartphone, Share2, ExternalLink } from 'lucide-react';
+import { X, QrCode, Copy, Check, Smartphone } from 'lucide-react';
 
 interface QuickShareModalProps {
   isOpen: boolean;
@@ -16,8 +18,10 @@ export const QuickShareModal: React.FC<QuickShareModalProps> = ({
 }) => {
   const [copied, setCopied] = useState(false);
   // Never pass Vercel share/protection tokens or session parameters to a QR service.
-  const currentUrl = window.location.origin + window.location.pathname;
+  const currentUrl = publicAppUrl(window.location.href);
   useBodyScrollLock(isOpen);
+  useDialogEscape(isOpen, onClose);
+  useEffect(() => {if (isOpen) setCopied(false);}, [isOpen]);
   if (!isOpen) return null;
 
   const handleCopyLink = async () => {
@@ -39,11 +43,11 @@ export const QuickShareModal: React.FC<QuickShareModalProps> = ({
               <QrCode size={20} />
             </div>
             <div>
-              <h2 className="text-base font-bold text-neutral-900 dark:text-white">Envio Rápido via Celular</h2>
-              <p className="text-xs text-neutral-500">Escaneie o QR Code no celular para enviar mídias</p>
+              <h2 className="text-base font-bold text-neutral-900 dark:text-white">Abrir no celular</h2>
+              <p className="text-xs text-neutral-500">Escaneie para acessar sua biblioteca e enviar mídias</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 text-neutral-400 hover:text-neutral-700 dark:hover:text-white rounded-xl transition-colors">
+          <button onClick={onClose} aria-label="Fechar QR Code" className="min-h-11 min-w-11 p-2 text-neutral-400 hover:text-neutral-700 dark:hover:text-white rounded-xl transition-colors">
             <X size={20} />
           </button>
         </div>
@@ -62,21 +66,23 @@ export const QuickShareModal: React.FC<QuickShareModalProps> = ({
               Abra a câmera do seu smartphone
             </p>
             <p className="text-neutral-400 text-[11px]">
-              Abra o Univer Mídia e informe o código de operador. A prévia também exige acesso autorizado pela Vercel.
+              Aponte a câmera para o QR Code, abra o link e entre com a senha do Univer Mídia. Se já estiver conectado, a biblioteca abre direto.
             </p>
           </div>
 
           {/* Copy Link Input */}
           <div className="flex items-center gap-2 p-1.5 bg-neutral-100 dark:bg-neutral-800/80 rounded-xl border border-neutral-200 dark:border-neutral-700">
             <input 
+              aria-label="Link para abrir no celular"
+              onFocus={event => event.currentTarget.select()}
               type="text" 
               readOnly 
               value={currentUrl} 
-              className="flex-1 bg-transparent px-2 text-xs font-mono text-neutral-700 dark:text-neutral-300 outline-none truncate"
+              className="min-w-0 flex-1 bg-transparent px-2 text-xs font-mono text-neutral-700 dark:text-neutral-300 outline-none truncate"
             />
             <button 
               onClick={handleCopyLink}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-univer-blue hover:bg-blue-600 text-white rounded-lg text-xs font-bold transition-colors shrink-0"
+              className="min-h-11 flex items-center gap-1.5 px-3 py-1.5 bg-univer-blue hover:bg-blue-600 text-white rounded-lg text-xs font-bold transition-colors shrink-0"
             >
               {copied ? <Check size={14} /> : <Copy size={14} />}
               <span>{copied ? 'Copiado!' : 'Copiar'}</span>
