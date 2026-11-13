@@ -125,3 +125,10 @@ Zoom cria uma área rolável, com arraste pelo mouse e rolagem no celular. Ajust
 ## Contagem e filtros da biblioteca
 
 O resumo mostra arquivos e eventos dos resultados filtrados, acompanhado de Mostrando X de Y arquivos. A abertura continua no dia de envio mais recente; Mostrar todos os arquivos limpa dia, tipo e busca, remove a seleção e expande os grupos. Contadores de tipo consideram o dia e a busca ativos. Nenhuma dessas ações altera arquivos no Drive.
+
+
+## Atualização automática da biblioteca
+
+Com a aba visível e conexão disponível, o app consulta novidades vinte segundos após cada atualização automática concluída. Voltar à aba ou recuperar a conexão também solicita uma consulta, com intervalo mínimo de cinco segundos e sem sobrepor leituras. Abas ocultas e telas de envio/edição interrompem novas consultas; falhas mantêm a última lista e aumentam o intervalo até dois minutos. Sair da conta remove os agendamentos e cancela a leitura em andamento.
+
+A atualização preserva busca, tipo, grupos recolhidos e a seleção dos arquivos que ainda existem. Se surgir um dia mais recente enquanto há fotos selecionadas, mantém o dia atual explicitamente selecionado para não escondê-las. Leituras antigas são canceladas antes de renomear ou excluir para não sobrescrever uma alteração confirmada. Cartões usam identificadores estáveis, evitando remontagem quando novos arquivos mudam a ordem da lista. Não há avisos de sucesso repetidos nem download automático dos materiais.

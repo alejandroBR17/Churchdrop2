@@ -1,3 +1,4 @@
+import {useLibrarySync} from './hooks/useLibrarySync';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {requestNativeDownload, clearNativeDownloads} from './services/nativeDownload';
 import {DownloadQueueModal} from './components/DownloadQueueModal';
@@ -127,41 +128,56 @@ export default function App() {
     setVisibleItemLimit(12);
   }, [activeFilter, searchTerm, resolvedDay]);
 
-  // Fetch Files with Step 1/2 Loading Architecture
-  const loadFiles = async (showLoadingSpinner = true) => {
-    if (preservationRequest.current) {showToast('Aguarde a preservação terminar antes de atualizar.', 'info'); return;}
+  const mutationCount = useRef(0);
+  const syncContext = useRef({selectedDay,resolvedDay,selectedIds,blocked:false});
+  syncContext.current = {selectedDay,resolvedDay,selectedIds,blocked:Boolean(isLoading||showUploadModal||itemToRename||itemToDelete||isBulkDeleteConfirm||isDeleting||viewerItem||downloadQueue||showStatsModal||showHolyricsModal)};
+  const cancelLibraryRead = () => {
+    listRequest.current?.abort();listRequest.current=null;
+    setIsRefreshing(false);setIsLoading(false);setLoadingStage('idle');
+  };
+  // Automatic reads preserve the current view; explicit refresh keeps its feedback.
+  const loadFiles = async (showLoadingSpinner = true, automatic = false):Promise<boolean|undefined> => {
+    if (preservationRequest.current || mutationCount.current) {if(!automatic)showToast('Aguarde a alteração terminar antes de atualizar.', 'info'); return;}
+    if(automatic && listRequest.current)return;
     listRequest.current?.abort();
     const request = new AbortController();
     listRequest.current = request;
     if (showLoadingSpinner) setIsLoading(true);
     setIsRefreshing(true);
-    setListError('');
-    setLoadingStage('stage1_cache');
+    if(!automatic){setListError('');setLoadingStage('stage1_cache');}
     const cached = getCachedFiles();
     try {
       // Step 1: Rapid Cache Hydration
-      if (cached.length > 0) {
+      if (!automatic && cached.length > 0) {
         setItems(cached);
         if (showLoadingSpinner) setIsLoading(false);
       }
 
       // Step 2: Background Server Sync
-      setLoadingStage('stage2_server');
+      if(!automatic)setLoadingStage('stage2_server');
       const freshFiles = await fetchFilesFromScript(request.signal);
       if (listRequest.current !== request || request.signal.aborted) return;
-      setItems(freshFiles);
-      setSelectedIds(previous => previous.filter(id => freshFiles.some(file => file.id === id)));
-      if (!showLoadingSpinner) showToast('Lista atualizada.', 'success', 2500);
+      const ids = new Set(freshFiles.map(file=>file.id));
+      const view = syncContext.current;
+      // A new publication day must not hide photos the user has already selected.
+      if(view.selectedDay==='recent' && view.resolvedDay && view.selectedIds.some(id=>ids.has(id)) && libraryDays(freshFiles)[0]?.key!==view.resolvedDay)setSelectedDay(view.resolvedDay);
+      setItems(previous=>JSON.stringify(previous)===JSON.stringify(freshFiles)?previous:freshFiles);
+      setSelectedIds(previous=>{const next=previous.filter(id=>ids.has(id));return next.length===previous.length?previous:next;});
+      setListError('');
+      if (!showLoadingSpinner && !automatic) showToast('Lista atualizada.', 'success', 2500);
+      return true;
     } catch {
       if (listRequest.current !== request || request.signal.aborted) return;
-      setListError(cached.length > 0
+      setListError(automatic ? 'Não foi possível atualizar automaticamente. A lista anterior foi mantida; vamos tentar novamente.' : cached.length > 0
         ? 'Não foi possível atualizar. Você está vendo a última lista desta sessão.'
         : 'Não foi possível carregar os arquivos. Verifique sua conexão e tente novamente.');
+      return false;
     } finally {
       if (listRequest.current === request && !request.signal.aborted) {
         setIsLoading(false);
         setIsRefreshing(false);
         setLoadingStage('idle');
+        listRequest.current=null;
       }
     }
   };
@@ -170,6 +186,8 @@ export default function App() {
     loadFiles();
     return () => listRequest.current?.abort();
   }, []);
+
+  useLibrarySync(()=>loadFiles(false,true),()=>syncContext.current.blocked||Boolean(listRequest.current||preservationRequest.current||mutationCount.current));
 
   // Keyboard Shortcuts Listener
   useEffect(() => {
@@ -277,6 +295,7 @@ export default function App() {
 
   // Delete File Handler
   const handleConfirmDelete = async () => {
+    mutationCount.current++;cancelLibraryRead();
     setIsDeleting(true);
     try {
       if (isBulkDeleteConfirm) {
@@ -294,6 +313,7 @@ export default function App() {
     } catch (e) {
       showToast('Erro ao excluir arquivo(s).', 'error');
     } finally {
+      mutationCount.current--;
       setIsDeleting(false);
       setItemToDelete(null);
       setIsBulkDeleteConfirm(false);
@@ -320,8 +340,11 @@ export default function App() {
   };
 
   const handleConfirmRename = async (id: string, newName: string) => {
-    await renameFileInScript(id, newName);
-    setItems(prev => prev.map(i => i.id === id ? { ...i, name: newName } : i));
+    mutationCount.current++;cancelLibraryRead();
+    try {
+      await renameFileInScript(id, newName);
+      setItems(prev => prev.map(i => i.id === id ? { ...i, name: newName } : i));
+    } finally {mutationCount.current--;}
   };
 
   // Media Viewer Navigation
@@ -607,9 +630,9 @@ export default function App() {
                             ? "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 animate-in fade-in duration-200"
                             : "space-y-2 animate-in fade-in duration-200"
                         }>
-                          {visibleGroupList.map((item, idx) => (
+                          {visibleGroupList.map(item => (
                             <MediaCard
-                              key={`${item.id || 'item'}-${idx}`}
+                              key={item.id}
                               item={item}
                               isSelected={selectedIds.includes(item.id)}
                               hasSelection={selectedIds.length > 0}
