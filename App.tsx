@@ -1,5 +1,10 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import JSZip from 'jszip';
+import {isTextEntry} from './services/keyboard';
+import {rangeSelection} from './services/rangeSelection';
+import {getDownloadRequests,subscribeDownloadRequests,clearDownloadRequests} from './services/downloadRequests';
+import {useLibrarySync} from './hooks/useLibrarySync';
+import React, { useState, useEffect, useRef, useMemo, useSyncExternalStore } from 'react';
+import {requestNativeDownload, clearNativeDownloads} from './services/nativeDownload';
+import {DownloadQueueModal} from './components/DownloadQueueModal';
 import { 
   Plus, Grid, List, Search, RefreshCw, Loader2, Sparkles, 
   Trash2, Edit3, Download, Eye, FileText, Video, Music, 
@@ -20,24 +25,24 @@ import { ShortcutsModal } from './components/ShortcutsModal';
 import { RenameModal } from './components/RenameModal';
 import { ConfirmModal } from './components/ConfirmModal';
 import { AudioPlayerBar } from './components/AudioPlayerBar';
-import { AddMenu } from './components/AddMenu';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { MobileSidebarDrawer } from './components/MobileSidebarDrawer';
 
 import { MediaItem, MediaType, ToastState, ViewMode } from './types';
-import { MOCK_MEDIA } from './constants';
+import {libraryDays, uploadDay} from './services/libraryDays';
 import { 
   fetchFilesFromScript, deleteFileFromScript, renameFileInScript, 
-  getCachedFiles, groupItemsByEvent 
+  getCachedFiles, groupItemsByEvent, fetchTextContent, setFilePreservation
 } from './services/churchService';
 
 const GOLD_TEXT_CLASS = "text-amber-600 dark:text-univer-gold";
 
 export default function App() {
+  const requestedDownloads=useSyncExternalStore(subscribeDownloadRequests,getDownloadRequests);
   // Theme & Layout State
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
-    return localStorage.getItem('theme') === 'dark' || 
-      (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    try { const theme = localStorage.getItem('theme'); return theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches); }
+    catch {return window.matchMedia('(prefers-color-scheme: dark)').matches;}
   });
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [activeFilter, setActiveFilter] = useState<MediaType | 'all'>('all');
@@ -45,9 +50,20 @@ export default function App() {
   
   // Data & Selection State
   const [items, setItems] = useState<MediaItem[]>([]);
+  const [selectedDay, setSelectedDay] = useState('recent');
+  const days = useMemo(()=>libraryDays(items),[items]);
+  const resolvedDay = selectedDay === 'recent' ? days[0]?.key : selectedDay === 'all' ? undefined : selectedDay;
+  const dayItems = useMemo(()=>resolvedDay ? items.filter(item=>uploadDay(item.date)===resolvedDay) : items,[items,resolvedDay]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const selectionAnchor=useRef<string|null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const selectedItems = useMemo(() => items.filter(item => selectedIds.includes(item.id)), [items, selectedIds]);
+  const [listError, setListError] = useState('');
+  const listRequest = useRef<AbortController | null>(null);
+  const preservationRequest = useRef<AbortController | null>(null);
+  const [preservingId, setPreservingId] = useState<string | null>(null);
+  useEffect(() => () => preservationRequest.current?.abort(), []);
   const [loadingStage, setLoadingStage] = useState<'idle' | 'stage1_cache' | 'stage2_server'>('idle');
   const [visibleItemLimit, setVisibleItemLimit] = useState<number>(12);
 
@@ -55,11 +71,12 @@ export default function App() {
   const [viewerItem, setViewerItem] = useState<MediaItem | null>(null);
   const [activeAudioItem, setActiveAudioItem] = useState<MediaItem | null>(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [downloadQueue, setDownloadQueue] = useState<{files:MediaItem[];requestedIds:string[]} | null>(null);
+  useEffect(()=>()=>clearNativeDownloads(),[]);
   const [showHolyricsModal, setShowHolyricsModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showStatsModal, setShowStatsModal] = useState(false);
   const [showShortcutsModal, setShowShortcutsModal] = useState(false);
-  const [showAddMenu, setShowAddMenu] = useState(false);
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
 
   // Rename & Delete Confirm Modals
@@ -94,14 +111,15 @@ export default function App() {
     return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
   }, []);
 
-  // Sync Theme with DOM
+  // Sync Theme with DOM and the browser toolbar (including installed apps).
   useEffect(() => {
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', isDarkMode ? '#0b1424' : '#f5f7fb');
     if (isDarkMode) {
       document.documentElement.classList.add('dark');
-      localStorage.setItem('theme', 'dark');
+      try {localStorage.setItem('theme', 'dark');} catch {}
     } else {
       document.documentElement.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
+      try {localStorage.setItem('theme', 'light');} catch {}
     }
   }, [isDarkMode]);
 
@@ -113,92 +131,111 @@ export default function App() {
 
   // Reset visible limit on filter/search change (progressive chunking)
   useEffect(() => {
-    setVisibleItemLimit(12);
-  }, [activeFilter, searchTerm]);
+    setVisibleItemLimit(12);selectionAnchor.current=null;
+  }, [activeFilter, searchTerm, resolvedDay]);
 
-  // Fetch Files with Step 1/2 Loading Architecture
-  const loadFiles = async (showLoadingSpinner = true) => {
+  const mutationCount = useRef(0);
+  const syncContext = useRef({selectedDay,resolvedDay,selectedIds,blocked:false});
+  syncContext.current = {selectedDay,resolvedDay,selectedIds,blocked:Boolean(isLoading||showUploadModal||itemToRename||itemToDelete||isBulkDeleteConfirm||isDeleting||viewerItem||downloadQueue||showStatsModal||showHolyricsModal)};
+  const cancelLibraryRead = () => {
+    listRequest.current?.abort();listRequest.current=null;
+    setIsRefreshing(false);setIsLoading(false);setLoadingStage('idle');
+  };
+  // Automatic reads preserve the current view; explicit refresh keeps its feedback.
+  const loadFiles = async (showLoadingSpinner = true, automatic = false):Promise<boolean|undefined> => {
+    if (preservationRequest.current || mutationCount.current) {if(!automatic)showToast('Aguarde a alteração terminar antes de atualizar.', 'info'); return;}
+    if(automatic && listRequest.current)return;
+    listRequest.current?.abort();
+    const request = new AbortController();
+    listRequest.current = request;
     if (showLoadingSpinner) setIsLoading(true);
     setIsRefreshing(true);
-    setLoadingStage('stage1_cache');
-
+    if(!automatic){setListError('');setLoadingStage('stage1_cache');}
+    const cached = getCachedFiles();
     try {
       // Step 1: Rapid Cache Hydration
-      const cached = getCachedFiles();
-      if (cached.length > 0) {
+      if (!automatic && cached.length > 0) {
         setItems(cached);
         if (showLoadingSpinner) setIsLoading(false);
       }
 
       // Step 2: Background Server Sync
-      setLoadingStage('stage2_server');
-      const freshFiles = await fetchFilesFromScript();
-      if (freshFiles.length > 0) {
-        setItems(freshFiles);
-        showToast('Sincronização com o servidor concluída com sucesso!', 'success', 2500);
-      } else if (cached.length === 0) {
-        // Fallback mock data if server has 0 files or first setup
-        setItems(MOCK_MEDIA);
-      }
-    } catch (e) {
-      console.error('Erro ao buscar mídias:', e);
-      showToast('Exibindo arquivos cacheados do armazenamento local.', 'info');
+      if(!automatic)setLoadingStage('stage2_server');
+      const freshFiles = await fetchFilesFromScript(request.signal);
+      if (listRequest.current !== request || request.signal.aborted) return;
+      const ids = new Set(freshFiles.map(file=>file.id));
+      const view = syncContext.current;
+      // A new publication day must not hide photos the user has already selected.
+      if(view.selectedDay==='recent' && view.resolvedDay && view.selectedIds.some(id=>ids.has(id)) && libraryDays(freshFiles)[0]?.key!==view.resolvedDay)setSelectedDay(view.resolvedDay);
+      setItems(previous=>JSON.stringify(previous)===JSON.stringify(freshFiles)?previous:freshFiles);
+      setSelectedIds(previous=>{const next=previous.filter(id=>ids.has(id));return next.length===previous.length?previous:next;});
+      setListError('');
+      if (!showLoadingSpinner && !automatic) showToast('Lista atualizada.', 'success', 2500);
+      return true;
+    } catch {
+      if (listRequest.current !== request || request.signal.aborted) return;
+      setListError(automatic ? 'Não foi possível atualizar automaticamente. A lista anterior foi mantida; vamos tentar novamente.' : cached.length > 0
+        ? 'Não foi possível atualizar. Você está vendo a última lista desta sessão.'
+        : 'Não foi possível carregar os arquivos. Verifique sua conexão e tente novamente.');
+      return false;
     } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-      setLoadingStage('idle');
+      if (listRequest.current === request && !request.signal.aborted) {
+        setIsLoading(false);
+        setIsRefreshing(false);
+        setLoadingStage('idle');
+        listRequest.current=null;
+      }
     }
   };
 
   useEffect(() => {
     loadFiles();
+    return () => listRequest.current?.abort();
   }, []);
 
-  // Keyboard Shortcuts Listener
+  useLibrarySync(()=>loadFiles(false,true),()=>syncContext.current.blocked||Boolean(listRequest.current||preservationRequest.current||mutationCount.current));
+
+  // Leave typing and open dialogs in control of their own keyboard shortcuts.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'a') {
-        if (!['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
-          e.preventDefault();
-          setSelectedIds(filteredItems.map(i => i.id));
-          showToast(`${filteredItems.length} itens selecionados`, 'info');
-        }
+      if (e.defaultPrevented || isTextEntry(e.target) || document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'a' && !e.altKey) {
+        e.preventDefault();
+        selectionAnchor.current = null;
+        setSelectedIds(filteredItems.map(i => i.id));
+        showToast(`${filteredItems.length} itens selecionados`, 'info');
       }
-      if (e.key === '/') {
-        if (!['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
-          e.preventDefault();
-          const searchInput = document.querySelector('input[type="text"]') as HTMLInputElement;
-          if (searchInput) searchInput.focus();
-        }
+      if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        document.getElementById('library-search')?.focus();
       }
     };
-
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [items, searchTerm, activeFilter]);
+  }, [items, searchTerm, activeFilter, resolvedDay]);
 
-  // Filter & Search Logic
-  const filteredItems = useMemo(() => {
-    return items.filter(item => {
-      const matchesFilter = activeFilter === 'all' || item.type === activeFilter;
-      const matchesSearch = !searchTerm.trim() || 
-        item.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-        (item.eventName && item.eventName.toLowerCase().includes(searchTerm.toLowerCase()));
-      return matchesFilter && matchesSearch;
-    });
-  }, [items, activeFilter, searchTerm]);
+  // Search and type counters use the same selected-day scope.
+  const searchItems = useMemo(() => {
+    const query=searchTerm.trim().toLocaleLowerCase('pt-BR');
+    return dayItems.filter(item=>!query || item.name.toLocaleLowerCase('pt-BR').includes(query) || item.eventName?.toLocaleLowerCase('pt-BR').includes(query));
+  },[dayItems,searchTerm]);
+  const filteredItems = useMemo(()=>searchItems.filter(item=>activeFilter==='all'||item.type===activeFilter),[searchItems,activeFilter]);
+  useEffect(()=>{
+    const visible = new Set(filteredItems.map(item=>item.id));
+    setSelectedIds(previous=>previous.filter(id=>visible.has(id)));
+  },[filteredItems]);
 
   // Counts by type
   const counts = useMemo(() => {
     return {
-      all: items.length,
-      video: items.filter(i => i.type === 'video').length,
-      image: items.filter(i => i.type === 'image').length,
-      pdf: items.filter(i => i.type === 'pdf').length,
-      audio: items.filter(i => i.type === 'audio').length,
-      text: items.filter(i => i.type === 'text').length,
+      all: searchItems.length,
+      video: searchItems.filter(i => i.type === 'video').length,
+      image: searchItems.filter(i => i.type === 'image').length,
+      pdf: searchItems.filter(i => i.type === 'pdf').length,
+      audio: searchItems.filter(i => i.type === 'audio').length,
+      text: searchItems.filter(i => i.type === 'text').length,
     };
-  }, [items]);
+  }, [searchItems]);
 
   // Grouping by Service/Event Name
   const groupedItems = useMemo(() => {
@@ -213,88 +250,61 @@ export default function App() {
     });
   }, [groupedItems]);
 
-  // Selection Handlers
+  const visibleSelectionIds=useMemo(()=>sortedEventNames.flatMap(name=>collapsedGroups[name]?[]:groupedItems[name].slice(0,visibleItemLimit).map(item=>item.id)),[sortedEventNames,groupedItems,collapsedGroups,visibleItemLimit]);
+
+  // Shift follows displayed order and applies the clicked item state to the range.
   const handleToggleSelect = (id: string, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    setSelectedIds(prev => 
-      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
-    );
+    e?.stopPropagation();
+    if(e?.shiftKey)e.preventDefault();
+    if(!visibleSelectionIds.includes(id))return;
+    const anchor=selectionAnchor.current;
+    const shift=Boolean(e?.shiftKey);
+    if(!shift||anchor===null||!visibleSelectionIds.includes(anchor))selectionAnchor.current=id;
+    setSelectedIds(previous=>rangeSelection(previous,visibleSelectionIds,anchor,id,shift));
   };
 
   const handleSelectAll = () => {
+    selectionAnchor.current=null;
     setSelectedIds(filteredItems.map(i => i.id));
   };
 
   const handleClearSelection = () => {
+    selectionAnchor.current=null;
     setSelectedIds([]);
   };
 
-  // Download File Handler
+  // Native download: do not open a Drive tab or load whole video files in JS.
   const handleDownload = (url: string) => {
-    if (!url) {
-      showToast('Link de download não disponível', 'error');
-      return;
-    }
-    const link = document.createElement('a');
-    link.href = url;
-    link.target = '_blank';
-    link.download = '';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    showToast('Iniciando download...', 'info');
+    try {
+      const file = items.find(item=>item.downloadUrl===url);
+      requestNativeDownload(url,file?.name);
+      showToast('Download solicitado. Confira os downloads do navegador.', 'info');
+    } catch(error) {showToast(error instanceof Error ? error.message : 'Não foi possível solicitar o download.', 'error');}
   };
-
-  // Bulk Download as ZIP
-  const handleBulkDownload = async () => {
-    const selected = items.filter(i => selectedIds.includes(i.id));
-    if (selected.length === 0) return;
-
-    if (selected.length === 1) {
-      handleDownload(selected[0].downloadUrl || selected[0].url);
-      return;
-    }
-
-    showToast(`Gerando arquivo ZIP de ${selected.length} itens...`, 'info');
-    const zip = new JSZip();
-
-    let count = 0;
-    for (const item of selected) {
+  const handleSeparateDownloads = () => {
+    if(!selectedItems.length)return;
+    if(selectedItems.length===1)handleDownload(selectedItems[0].downloadUrl);
+    else {
+      const first=selectedItems[0];
       try {
-        const downloadUrl = item.downloadUrl || item.url;
-        if (downloadUrl) {
-          const res = await fetch(downloadUrl);
-          const blob = await res.blob();
-          zip.file(item.name, blob);
-          count++;
-        }
-      } catch (e) {
-        console.warn(`Não foi possível baixar ${item.name} diretamente para o ZIP:`, e);
-      }
-    }
-
-    if (count > 0) {
-      const zipBlob = await zip.generateAsync({ type: 'blob' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(zipBlob);
-      a.download = `UniverMidia_Pacote_${new Date().toISOString().slice(0, 10)}.zip`;
-      a.click();
-      showToast('Pacote ZIP gerado e pronto!', 'success');
-    } else {
-      showToast('Erro ao agrupar arquivos em ZIP.', 'error');
+        // Preserve the user gesture for the first browser-native download.
+        requestNativeDownload(first.downloadUrl,first.name);
+        setDownloadQueue({files:[...selectedItems],requestedIds:[first.id]});
+      } catch(error) {showToast(error instanceof Error?error.message:'Não foi possível iniciar os downloads.','error');}
     }
   };
 
   // Bulk Copy Links
-  const handleBulkCopyLinks = () => {
+  const handleBulkCopyLinks = async () => {
     const selected = items.filter(i => selectedIds.includes(i.id));
     const links = selected.map(i => `${i.name}: ${i.downloadUrl || i.url}`).join('\n');
-    navigator.clipboard.writeText(links);
-    showToast(`${selected.length} links copiados!`, 'success');
+    try {await navigator.clipboard.writeText(links); showToast(`${selected.length} links copiados!`, 'success');}
+    catch {showToast('Não foi possível copiar os links. Tente novamente.', 'error');}
   };
 
   // Delete File Handler
   const handleConfirmDelete = async () => {
+    mutationCount.current++;cancelLibraryRead();
     setIsDeleting(true);
     try {
       if (isBulkDeleteConfirm) {
@@ -312,6 +322,7 @@ export default function App() {
     } catch (e) {
       showToast('Erro ao excluir arquivo(s).', 'error');
     } finally {
+      mutationCount.current--;
       setIsDeleting(false);
       setItemToDelete(null);
       setIsBulkDeleteConfirm(false);
@@ -319,15 +330,45 @@ export default function App() {
   };
 
   // Rename File Handler
+  const handlePreservation = async (item: MediaItem) => {
+    if (preservationRequest.current || isRefreshing) return;
+    const controller = new AbortController(); preservationRequest.current = controller;
+    setPreservingId(item.id);
+    const preserved = !item.preserved;
+    try {
+      await setFilePreservation(item.id, preserved, controller.signal);
+      if (controller.signal.aborted) return;
+      setItems(previous => previous.map(file => file.id === item.id ? {...file, preserved} : file));
+      showToast(preserved ? 'Arquivo fora da revisão por idade. A exclusão manual continua disponível.' : 'Arquivo incluído novamente na revisão por idade.', 'success');
+    } catch {
+      if (!controller.signal.aborted) showToast('Não foi possível salvar. Atualize a biblioteca e tente novamente.', 'error');
+    } finally {
+      if (preservationRequest.current === controller) preservationRequest.current = null;
+      if (!controller.signal.aborted) setPreservingId(null);
+    }
+  };
+
   const handleConfirmRename = async (id: string, newName: string) => {
-    await renameFileInScript(id, newName);
-    setItems(prev => prev.map(i => i.id === id ? { ...i, name: newName } : i));
+    mutationCount.current++;cancelLibraryRead();
+    try {
+      await renameFileInScript(id, newName);
+      setItems(prev => prev.map(i => i.id === id ? { ...i, name: newName } : i));
+    } finally {mutationCount.current--;}
   };
 
   // Media Viewer Navigation
   const currentViewerIndex = viewerItem ? filteredItems.findIndex(i => i.id === viewerItem.id) : -1;
   const hasNextViewer = currentViewerIndex !== -1 && currentViewerIndex < filteredItems.length - 1;
   const hasPrevViewer = currentViewerIndex > 0;
+
+  const handleViewerSelection = () => {
+    if(!viewerItem||!filteredItems.some(file=>file.id===viewerItem.id))return;
+    selectionAnchor.current=viewerItem.id;
+    const group=groupedItems[viewerItem.eventName||'Geral']||[];
+    const position=group.findIndex(file=>file.id===viewerItem.id);
+    if(!selectedIds.includes(viewerItem.id))setVisibleItemLimit(previous=>Math.max(previous,position+1));
+    setSelectedIds(previous=>previous.includes(viewerItem.id)?previous.filter(id=>id!==viewerItem.id):[...previous,viewerItem.id]);
+  };
 
   const handleNextViewer = () => {
     if (hasNextViewer) setViewerItem(filteredItems[currentViewerIndex + 1]);
@@ -338,9 +379,12 @@ export default function App() {
   };
 
   // Open Media or Play Audio
-  const handleViewMedia = (item: MediaItem) => {
+  const handleViewMedia = async (item: MediaItem) => {
     if (item.type === 'audio') {
       setActiveAudioItem(item);
+    } else if (item.type === 'text') {
+      try { const textContent = await fetchTextContent(item.id); setViewerItem({...item, textContent}); }
+      catch {showToast('Não foi possível abrir o texto. Tente novamente.', 'error');}
     } else {
       setViewerItem(item);
     }
@@ -363,11 +407,12 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 flex flex-col font-sans antialiased transition-colors duration-200 select-none">
+    <div className="app-shell min-h-screen bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 flex flex-col font-sans antialiased transition-colors duration-200 select-none">
       
       {/* Toast Notification */}
       {toast.show && (
         <Toast 
+          show={toast.show}
           message={toast.message} 
           type={toast.type} 
           duration={toast.duration} 
@@ -392,7 +437,7 @@ export default function App() {
       />
 
       {/* Main Container Area */}
-      <div className="flex-1 md:pl-72 flex flex-col pb-24 md:pb-12">
+      <div className={`flex-1 md:pl-64 flex flex-col ${activeAudioItem ? 'pb-[32rem] md:pb-96' : selectedIds.length ? 'pb-48 md:pb-32' : 'pb-24 md:pb-12'}`}>
         
         {/* Sticky Header */}
         <Header 
@@ -424,8 +469,8 @@ export default function App() {
               <Loader2 size={15} className="animate-spin" />
               <span>
                 {loadingStage === 'stage1_cache' 
-                  ? '⚡ Etapa 1/2: Carregando mídias salvas no cache local...' 
-                  : '🔄 Etapa 2/2: Sincronizando novas mídias do servidor...'}
+                  ? 'Preparando a biblioteca…'
+                  : 'Consultando arquivos no Drive…'}
               </span>
             </div>
             <span className="text-[10px] font-mono tracking-wider uppercase bg-white/20 px-2.5 py-0.5 rounded-full font-extrabold">
@@ -435,10 +480,29 @@ export default function App() {
         )}
 
         {/* Content Body */}
-        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-6">
           
+          <section className="library-intro mb-4 sm:mb-7 flex flex-wrap items-end justify-between gap-5">
+            <div><p className="eyebrow mb-2 hidden sm:block">Organize. Compartilhe. Projete.</p><h1 className="text-2xl sm:text-4xl font-bold tracking-tight">Sua biblioteca<span className="text-blue-500">.</span></h1><p className="hidden sm:block mt-3 text-sm text-neutral-500 dark:text-neutral-400 max-w-md leading-relaxed">Os materiais da igreja, prontos para encontrar e levar à projeção.</p></div>
+            <div className="library-summary flex gap-6" role="group" aria-label="Resumo dos resultados"><div><strong>{filteredItems.length}</strong><span>{filteredItems.length===1?'arquivo':'arquivos'}</span></div><div><strong>{sortedEventNames.length}</strong><span>{sortedEventNames.length===1?'evento':'eventos'}</span></div></div>
+          </section>
+          <section aria-label="Arquivos por dia" className="mb-5 flex flex-wrap items-end gap-3 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4">
+            <label className="min-w-0 flex-1 text-xs font-semibold">Dia de envio
+              <select aria-label="Dia de envio" value={selectedDay} onChange={event=>{setSelectedDay(event.target.value);setSelectedIds([]);}} className="mt-2 block w-full min-w-0 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 px-3 py-2.5 text-sm">
+                <option value="recent">{days[0] ? `Mais recente · ${days[0].label}` : 'Dia mais recente'}</option>
+                {days.filter(day=>day.key!==days[0]?.key || day.key===selectedDay).map(day=><option key={day.key} value={day.key}>{day.label} · {day.count} arquivo(s)</option>)}
+                <option value="all">Todos os dias · biblioteca inteira</option>
+              </select>
+            </label>
+            <button type="button" disabled={!filteredItems.length} onClick={handleSelectAll} className="rounded-xl bg-blue-600 px-4 py-3 text-xs font-semibold text-white disabled:opacity-40">{resolvedDay ? 'Selecionar arquivos deste dia' : 'Selecionar resultados'}</button>
+            <div className="w-full space-y-2">
+              <p role="status" className="text-xs leading-relaxed text-neutral-500">Mostrando {filteredItems.length} de {items.length} arquivos nos filtros atuais. {resolvedDay ? `Dia ${resolvedDay.split('-').reverse().join('/')}.` : 'Todos os dias.'}</p>
+              {items.length>0 && (resolvedDay || activeFilter!=='all' || searchTerm.trim()) && <button type="button" onClick={()=>{selectionAnchor.current=null;setSelectedDay('all');setActiveFilter('all');setSearchTerm('');setSelectedIds([]);setCollapsedGroups({});}} className="secondary-button w-full sm:w-auto disabled:opacity-40">Mostrar todos os arquivos ({items.length})</button>}
+              {requestedDownloads.size>0 && <div className="flex flex-wrap items-center justify-between gap-2 pt-2 text-xs text-neutral-500"><span>Marcações de download nesta aba</span><button type="button" disabled={Boolean(downloadQueue)} onClick={clearDownloadRequests} aria-label="Limpar marcações de download" className="min-h-11 rounded-xl px-3 font-semibold text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950 disabled:opacity-40">Limpar marcações</button></div>}
+            </div>
+          </section>
           {/* Category Filter Pills (Mobile Scrollable) */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-3 mb-6 md:hidden custom-scrollbar">
+          <div className="category-tabs flex items-center gap-2 overflow-x-auto pb-3 mb-6 md:hidden custom-scrollbar">
             <button 
               onClick={() => setActiveFilter('all')}
               className={`px-3.5 py-1.5 rounded-full text-xs font-bold shrink-0 transition-colors ${
@@ -501,6 +565,11 @@ export default function App() {
             </button>
           </div>
 
+          {listError && <div role="status" className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+            <p className="min-w-0 flex-1">{listError}</p>
+            <button type="button" disabled={isRefreshing} onClick={() => loadFiles(false)} className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-current px-3 py-2 font-semibold disabled:opacity-50"><RefreshCw size={16}/>Tentar novamente</button>
+          </div>}
+
           {/* Loading Skeleton */}
           {isLoading ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -514,25 +583,27 @@ export default function App() {
             </div>
           ) : filteredItems.length === 0 ? (
             /* Empty State */
-            <div className="flex flex-col items-center justify-center p-12 text-center my-12 bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-200/80 dark:border-neutral-800/80 shadow-sm max-w-lg mx-auto">
+            <div className="library-empty flex flex-col items-center justify-center p-8 sm:p-12 text-center my-8 bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-200/80 dark:border-neutral-800/80 shadow-sm max-w-lg mx-auto">
               <div className="w-16 h-16 rounded-2xl bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center text-neutral-400 mb-4">
                 <Search size={32} />
               </div>
               <h3 className="text-base font-bold text-neutral-800 dark:text-neutral-200 mb-1">
-                Nenhum arquivo encontrado
+                {listError && items.length === 0 ? 'Biblioteca indisponível' : 'Nenhum arquivo encontrado'}
               </h3>
               <p className="text-xs text-neutral-400 max-w-xs mb-6">
-                {searchTerm 
+                {listError && items.length === 0
+                  ? 'Use Tentar novamente para consultar os arquivos no servidor.'
+                  : searchTerm
                   ? `Nenhum resultado para "${searchTerm}". Tente buscar outro termo.`
                   : 'A biblioteca de mídias está vazia. Comece enviando novos arquivos.'}
               </p>
-              <button
+              {!listError && <button
                 onClick={() => setShowUploadModal(true)}
                 className="flex items-center gap-2 bg-univer-blue hover:bg-blue-600 text-white font-bold text-xs px-5 py-2.5 rounded-xl transition-all shadow-md shadow-blue-500/20"
               >
                 <Plus size={16} />
                 <span>Enviar Primeira Mídia</span>
-              </button>
+              </button>}
             </div>
           ) : (
             /* Media Cards Accordions grouped by Event */
@@ -549,7 +620,7 @@ export default function App() {
                     {/* Event Group Banner Header */}
                     <div 
                       onClick={() => toggleGroupCollapse(eventName)}
-                      className="flex items-center justify-between p-3.5 bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200/80 dark:border-neutral-800/80 shadow-xs cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors select-none"
+                      className="event-heading flex items-center justify-between gap-3 p-3.5 bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200/80 dark:border-neutral-800/80 shadow-xs cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors select-none"
                     >
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-xl bg-univer-blue/10 text-univer-blue flex items-center justify-center font-bold">
@@ -575,14 +646,15 @@ export default function App() {
                       <>
                         <div className={
                           viewMode === 'grid' 
-                            ? "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 animate-in fade-in duration-200"
+                            ? "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 animate-in fade-in duration-200"
                             : "space-y-2 animate-in fade-in duration-200"
                         }>
-                          {visibleGroupList.map((item, idx) => (
+                          {visibleGroupList.map(item => (
                             <MediaCard
-                              key={`${item.id || 'item'}-${idx}`}
+                              key={item.id}
                               item={item}
                               isSelected={selectedIds.includes(item.id)}
+                              downloadRequested={requestedDownloads.has(item.id)}
                               hasSelection={selectedIds.length > 0}
                               onToggle={handleToggleSelect}
                               onDelete={(id) => {
@@ -590,6 +662,9 @@ export default function App() {
                                 setIsBulkDeleteConfirm(false);
                               }}
                               onRename={(item) => setItemToRename(item)}
+                              onPreserve={handlePreservation}
+                              isPreserving={preservingId === item.id}
+                              preservationDisabled={Boolean(preservingId) || isRefreshing}
                               onDownload={(url) => handleDownload(url)}
                               onView={handleViewMedia}
                               onShare={(item) => {
@@ -631,13 +706,14 @@ export default function App() {
 
       </div>
 
+      {downloadQueue && <DownloadQueueModal files={downloadQueue.files} initialRequestedIds={downloadQueue.requestedIds} autoStart onClose={()=>setDownloadQueue(null)}/>}
       {/* Floating Batch Action Toolbar */}
       <BatchActionBar 
         selectedCount={selectedIds.length}
         totalCount={filteredItems.length}
         onSelectAll={handleSelectAll}
         onClearSelection={handleClearSelection}
-        onBulkDownload={handleBulkDownload}
+        onBulkDownload={handleSeparateDownloads}
         onBulkDelete={() => setIsBulkDeleteConfirm(true)}
         onBulkCopyLinks={handleBulkCopyLinks}
       />
@@ -645,6 +721,7 @@ export default function App() {
       {/* Bottom Audio Player Bar */}
       <AudioPlayerBar 
         item={activeAudioItem}
+        raised={selectedIds.length > 0}
         onClose={() => setActiveAudioItem(null)}
         onDownload={handleDownload}
       />
@@ -652,6 +729,9 @@ export default function App() {
       {/* Media Viewer Modal */}
       <MediaViewerModal 
         item={viewerItem}
+        isSelected={Boolean(viewerItem&&selectedIds.includes(viewerItem.id))}
+        selectedCount={selectedIds.length}
+        onToggleSelection={handleViewerSelection}
         onClose={() => setViewerItem(null)}
         onNext={handleNextViewer}
         onPrev={handlePrevViewer}
@@ -723,20 +803,12 @@ export default function App() {
         onConfirm={handleConfirmDelete}
       />
 
-      {/* Mobile Add Sheet Menu */}
-      <AddMenu 
-        isOpen={showAddMenu}
-        onClose={() => setShowAddMenu(false)}
-        onUploadClick={() => setShowUploadModal(true)}
-        onTextClick={() => setShowHolyricsModal(true)}
-        os={os}
-      />
-
       {/* Mobile Bottom Navigation */}
       <MobileBottomNav 
         activeFilter={activeFilter}
         setActiveFilter={setActiveFilter}
-        setShowAddMenu={setShowAddMenu}
+        onOpenUpload={() => setShowUploadModal(true)}
+        onOpenHolyrics={() => setShowHolyricsModal(true)}
         setSidebarOpen={setShowMobileSidebar}
         sidebarOpen={showMobileSidebar}
         GOLD_TEXT_CLASS={GOLD_TEXT_CLASS}

@@ -1,6 +1,5 @@
 import React from 'react';
-import { Download, Trash2, CheckSquare, Square, X, Copy, Tag } from 'lucide-react';
-import { MediaItem } from '../types';
+import { Download, Trash2, CheckSquare, Square, X, Copy } from 'lucide-react';
 
 interface BatchActionBarProps {
   selectedCount: number;
@@ -26,25 +25,27 @@ export const BatchActionBar: React.FC<BatchActionBarProps> = ({
   const isAllSelected = selectedCount === totalCount && totalCount > 0;
 
   return (
-    <div className="fixed bottom-6 inset-x-4 max-w-xl mx-auto z-50 animate-in slide-in-from-bottom-6 duration-200">
-      <div className="bg-neutral-900/95 dark:bg-neutral-950/95 text-white border border-neutral-700/80 rounded-2xl p-3 shadow-2xl backdrop-blur-xl flex items-center justify-between gap-3">
+    <div className="fixed bottom-24 md:bottom-6 inset-x-4 max-w-xl mx-auto z-50 animate-in slide-in-from-bottom-6 duration-200">
+      <div className="bg-white/95 dark:bg-neutral-950/95 text-neutral-900 dark:text-white border border-neutral-200 dark:border-neutral-700/80 rounded-2xl p-3 shadow-2xl backdrop-blur-xl">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         
         {/* Count & Toggle */}
         <div className="flex items-center gap-3">
           <button 
+            aria-label={isAllSelected ? 'Limpar seleção' : 'Selecionar resultados atuais'}
             onClick={isAllSelected ? onClearSelection : onSelectAll}
-            className="flex items-center gap-2 text-xs font-bold text-neutral-300 hover:text-white px-2 py-1 rounded-lg hover:bg-neutral-800 transition-colors"
+            className="flex items-center gap-2 text-xs font-bold text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white px-2 py-1 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
           >
             {isAllSelected ? <CheckSquare size={16} className="text-univer-blue" /> : <Square size={16} />}
-            <span>{isAllSelected ? 'Todos' : `${selectedCount} sel.`}</span>
+            <span>{selectedCount} sel.</span>
           </button>
         </div>
 
         {/* Action Buttons */}
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2">
           <button 
             onClick={onBulkCopyLinks}
-            className="p-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 rounded-xl transition-colors text-xs font-semibold flex items-center gap-1.5"
+            className="p-2 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 rounded-xl transition-colors text-xs font-semibold flex items-center gap-1.5"
             title="Copiar links dos selecionados"
           >
             <Copy size={15} />
@@ -53,16 +54,16 @@ export const BatchActionBar: React.FC<BatchActionBarProps> = ({
 
           <button 
             onClick={onBulkDownload}
-            className="p-2 bg-univer-blue hover:bg-blue-600 text-white rounded-xl transition-colors text-xs font-bold flex items-center gap-1.5 shadow-md shadow-blue-900/50"
-            title="Baixar selecionados em lote"
+            className="p-2 bg-univer-blue hover:bg-blue-600 text-white rounded-xl transition-colors text-xs font-bold flex items-center gap-1.5 shadow-md shadow-blue-900/50 disabled:opacity-40 disabled:cursor-not-allowed"
+            title="Baixar selecionados como arquivos separados"
           >
             <Download size={15} />
-            <span>Baixar em Lote</span>
+            <span>{selectedCount === 1 ? 'Baixar' : 'Baixar separados'}</span>
           </button>
 
           <button 
             onClick={onBulkDelete}
-            className="p-2 bg-rose-600/20 hover:bg-rose-600 text-rose-400 hover:text-white rounded-xl transition-colors text-xs font-bold flex items-center gap-1.5 border border-rose-500/30"
+            className="p-2 bg-rose-600/20 hover:bg-rose-600 text-rose-700 dark:text-rose-400 hover:text-white rounded-xl transition-colors text-xs font-bold flex items-center gap-1.5 border border-rose-500/30"
             title="Excluir arquivos selecionados"
           >
             <Trash2 size={15} />
@@ -71,13 +72,14 @@ export const BatchActionBar: React.FC<BatchActionBarProps> = ({
 
           <button 
             onClick={onClearSelection}
-            className="p-1.5 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors ml-1"
+            className="p-1.5 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors ml-1"
             title="Cancelar seleção"
           >
             <X size={18} />
           </button>
         </div>
 
+      </div>
       </div>
     </div>
   );

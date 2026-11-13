@@ -1,3 +1,4 @@
+import {useBodyScrollLock} from '../hooks/useBodyScrollLock';
 import React from 'react';
 import { AlertTriangle, X, Loader2 } from 'lucide-react';
 
@@ -24,11 +25,12 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   onClose,
   onConfirm
 }) => {
+  useBodyScrollLock(isOpen);
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative w-full max-w-sm bg-white dark:bg-neutral-900 rounded-3xl shadow-2xl border border-neutral-200/80 dark:border-neutral-800/80 overflow-hidden flex flex-col p-6 text-center">
+      <div role="dialog" aria-modal="true" aria-label={title} className="workspace-dialog relative w-full max-w-sm bg-white dark:bg-neutral-900 rounded-3xl shadow-2xl border border-neutral-200/80 dark:border-neutral-800/80 overflow-hidden flex flex-col p-6 text-center">
         
         <div className={`w-12 h-12 rounded-2xl mx-auto mb-4 flex items-center justify-center ${
           isDanger 

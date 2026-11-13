@@ -7,6 +7,9 @@ export interface MediaItem {
   name: string;
   type: MediaType;
   size: string;
+  sizeBytes?: number;
+  mimeType?: string;
+  preserved?: boolean;
   date: Date;
   eventName: string; // Ex: "Culto de Domingo - 25/10"
   originalFile?: File; // Para upload

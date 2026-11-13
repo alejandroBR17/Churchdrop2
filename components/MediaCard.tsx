@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { 
   Video, FileText, Music, Image as ImageIcon, Download, Trash2, 
-  Edit3, CheckCircle, Eye, Share2, Play
+  Edit3, CheckCircle, Eye, Share2, Play, Bookmark, Loader2
 } from 'lucide-react';
 import { MediaItem } from '../types';
 
 interface MediaCardProps {
   item: MediaItem;
   isSelected: boolean;
+  downloadRequested?: boolean;
   hasSelection: boolean;
   onToggle: (id: string, e?: React.MouseEvent) => void;
   onDelete: (id: string) => void;
@@ -15,18 +16,22 @@ interface MediaCardProps {
   onDownload: (url: string) => void;
   onView: (item: MediaItem) => void;
   onShare?: (item: MediaItem) => void;
+  onPreserve?: (item: MediaItem) => void;
+  isPreserving?: boolean;
+  preservationDisabled?: boolean;
 }
 
 export const MediaCard: React.FC<MediaCardProps> = ({ 
   item, 
-  isSelected, 
+  isSelected,
+  downloadRequested = false,
   hasSelection, 
   onToggle, 
   onDelete, 
   onRename, 
   onDownload, 
   onView,
-  onShare 
+  onShare, onPreserve, isPreserving, preservationDisabled
 }) => {
   const [imgError, setImgError] = useState(false);
   const [isImgLoading, setIsImgLoading] = useState(true);
@@ -55,13 +60,13 @@ export const MediaCard: React.FC<MediaCardProps> = ({
 
   return (
     <div 
-      className={`group relative bg-white dark:bg-neutral-900 rounded-2xl overflow-hidden border transition-all duration-200 cursor-pointer hover:shadow-xl hover:-translate-y-1 ${
+      className={`media-card group relative select-none bg-white dark:bg-neutral-900 rounded-2xl overflow-hidden border transition-all duration-200 cursor-pointer hover:shadow-xl hover:-translate-y-0.5 ${
         isSelected 
           ? 'ring-2 ring-univer-blue border-transparent bg-blue-50/40 dark:bg-blue-950/20' 
           : 'border-neutral-200/80 dark:border-neutral-800/80'
       }`}
       onClick={(e) => {
-        if (hasSelection) {
+        if (hasSelection || e.shiftKey) {
           onToggle(item.id, e);
         } else {
           onView(item);
@@ -69,12 +74,12 @@ export const MediaCard: React.FC<MediaCardProps> = ({
       }}
     >
       {/* Media Preview Box */}
-      <div className="aspect-video w-full bg-neutral-950 relative overflow-hidden flex items-center justify-center">
+      <div className="aspect-video w-full bg-neutral-100 dark:bg-neutral-950 relative overflow-hidden flex items-center justify-center">
         {(item.type === 'image' || item.type === 'video') && item.url && !imgError ? (
           <>
             {isImgLoading && (
-              <div className="absolute inset-0 bg-neutral-800 animate-pulse flex items-center justify-center z-10">
-                <div className="w-6 h-6 border-2 border-neutral-600 border-t-neutral-300 rounded-full animate-spin" />
+              <div className="absolute inset-0 bg-neutral-200 dark:bg-neutral-800 animate-pulse flex items-center justify-center z-10">
+                <div className="w-6 h-6 border-2 border-neutral-300 dark:border-neutral-600 border-t-blue-600 dark:border-t-neutral-300 rounded-full animate-spin" />
               </div>
             )}
             <img 
@@ -90,6 +95,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({
                 isImgLoading ? 'opacity-0 scale-95' : 'opacity-90 group-hover:opacity-100 scale-100'
               }`} 
               loading="lazy"
+              decoding="async"
             />
             {item.type === 'video' && !isImgLoading && (
               <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/40 transition-colors z-20">
@@ -100,7 +106,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({
             )}
           </>
         ) : (
-          <div className="flex flex-col items-center justify-center p-4 text-center text-neutral-400">
+          <div className="flex flex-col items-center justify-center p-4 text-center text-neutral-600 dark:text-neutral-400">
             {item.type === 'video' && <Video size={36} className="text-amber-400 mb-1" />}
             {item.type === 'image' && <ImageIcon size={36} className="text-blue-400 mb-1" />}
             {item.type === 'pdf' && <FileText size={36} className="text-rose-400 mb-1" />}
@@ -108,7 +114,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({
             {item.type === 'text' && <FileText size={36} className="text-emerald-400 mb-1" />}
             
             {item.type === 'text' && item.textContent && (
-              <p className="text-[11px] text-neutral-300 line-clamp-3 font-mono mt-1 px-2 text-left bg-neutral-900/80 p-2 rounded border border-neutral-800">
+              <p className="text-[11px] text-neutral-700 dark:text-neutral-300 line-clamp-3 font-mono mt-1 px-2 text-left bg-white dark:bg-neutral-900/80 p-2 rounded border border-neutral-200 dark:border-neutral-800">
                 {item.textContent}
               </p>
             )}
@@ -121,8 +127,11 @@ export const MediaCard: React.FC<MediaCardProps> = ({
         </span>
 
         {/* Selection Box Corner Button */}
-        <div 
-          className="absolute top-2.5 right-2.5 z-20"
+        <button
+          type="button"
+          aria-label={`Selecionar ${item.name}`}
+          aria-pressed={isSelected}
+          className="absolute top-1 right-1 z-20 rounded-xl"
           onClick={(e) => {
             e.stopPropagation();
             onToggle(item.id, e);
@@ -137,20 +146,19 @@ export const MediaCard: React.FC<MediaCardProps> = ({
               <div className="w-4 h-4 rounded-full border border-white/80" />
             </div>
           )}
-        </div>
+        </button>
 
-        {/* Quick View Button Hover Overlay */}
-        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 pointer-events-none">
-          <span className="bg-white/90 dark:bg-neutral-900/90 text-neutral-900 dark:text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow-lg flex items-center gap-1.5 backdrop-blur-sm">
-            <Eye size={14} /> Visualizar
-          </span>
+        <div className="absolute bottom-2 left-2 z-20 pointer-events-none">
+          <button type="button" aria-label={`Visualizar ${item.name}`} onClick={event=>{event.stopPropagation();onView(item);}} className="pointer-events-auto bg-white/90 dark:bg-neutral-900/90 text-neutral-900 dark:text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow-lg flex items-center gap-1.5 backdrop-blur-sm">
+            <Eye size={14}/>Visualizar
+          </button>
         </div>
       </div>
 
       {/* Card Info Details */}
-      <div className="p-3.5 flex flex-col justify-between">
+      <div className="p-4 flex flex-col justify-between">
         <div>
-          <h3 className="text-xs font-bold text-neutral-900 dark:text-white truncate" title={item.name}>
+          <h3 className="text-sm font-semibold text-neutral-900 dark:text-white truncate" title={item.name}>
             {item.name}
           </h3>
           <div className="flex items-center justify-between text-[10px] text-neutral-500 dark:text-neutral-400 mt-1">
@@ -158,6 +166,19 @@ export const MediaCard: React.FC<MediaCardProps> = ({
             <span>{new Date(item.date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
           </div>
         </div>
+
+        {downloadRequested && <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-300" title="Solicitado nesta aba. Confira o salvamento nos downloads do navegador."><CheckCircle size={14} className="shrink-0"/>Download solicitado</p>}
+
+        {onPreserve && <button type="button"
+          aria-pressed={Boolean(item.preserved)}
+          aria-label={`${item.preserved ? 'Remover preservação de' : 'Preservar'} ${item.name}`}
+          disabled={preservationDisabled}
+          title="Fica fora da revisão por idade. Não é backup e não impede exclusão manual."
+          onClick={event=>{event.stopPropagation(); onPreserve(item);}}
+          className={`mt-3 flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs font-medium disabled:opacity-50 ${item.preserved ? 'border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300' : 'border-neutral-200 dark:border-neutral-700 text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800'}`}>
+          {isPreserving ? <Loader2 size={14} className="shrink-0 animate-spin"/> : <Bookmark size={14} className="shrink-0" fill={item.preserved ? 'currentColor' : 'none'}/>}
+          {isPreserving ? 'Salvando…' : item.preserved ? 'Preservado da revisão por idade' : 'Preservar este arquivo'}
+        </button>}
 
         {/* Action Toolbar */}
         <div className="flex items-center justify-between border-t border-neutral-100 dark:border-neutral-800/80 pt-2.5 mt-2.5">
@@ -190,7 +211,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({
           <button 
             onClick={(e) => { e.stopPropagation(); onDownload(item.downloadUrl || item.url); }}
             className="flex items-center gap-1 px-2.5 py-1 bg-neutral-100 hover:bg-univer-blue dark:bg-neutral-800 dark:hover:bg-univer-blue text-neutral-700 hover:text-white dark:text-neutral-300 dark:hover:text-white text-[11px] font-bold rounded-lg transition-colors"
-            title="Baixar Arquivo"
+            title={downloadRequested?'Solicitar download novamente':'Baixar Arquivo'}
           >
             <Download size={13} />
             <span>Baixar</span>

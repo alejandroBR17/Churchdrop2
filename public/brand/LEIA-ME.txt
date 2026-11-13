@@ -1,0 +1,20 @@
+UNIVER MÍDIA — arquivos da marca aprovada
+
+symbol: somente o símbolo U com play.
+wordmark: somente o nome Univer Mídia.
+combined: símbolo e nome juntos.
+
+Sem sufixo: azul #2563EB e texto escuro #0F172A.
+-blue: uma cor azul.
+-white: uma cor branca para fundos escuros.
+-dark: uma cor escura para fundos claros.
+-on-dark: azul claro #60A5FA e texto branco.
+-currentcolor: uma cor herdada do CSS quando o SVG é inserido diretamente na página.
+
+SVG: vetores com letras convertidas em curvas; não exigem instalação de fontes.
+PNG: arquivos prontos para uso, com transparência nas versões da marca.
+app-icon: ícones de aplicativo com fundo branco; versão maskable possui margem maior.
+
+Para trocar cores, edite os valores fill dos grupos no SVG. Mantenha as proporções e o espaço livre ao redor. A versão branca fica invisível sobre fundo branco, mas mantém o desenho.
+
+A vetorização segue o contorno da imagem aprovada, com limpeza de pequenos ruídos e simplificação em curvas. O original gerado foi preservado separadamente.

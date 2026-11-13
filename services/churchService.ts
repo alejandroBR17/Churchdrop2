@@ -1,311 +1,139 @@
-import { MediaItem, MediaType } from '../types';
+import {mapDriveFiles, readDriveFiles} from './fileList.ts';
+import type {DriveFile} from './fileList.ts';
+import {uploadResumable} from './resumableUpload.ts';
+import {appApi} from './appApi.ts';
+import type {MediaItem} from '../types.ts';
 
-// =========================================================================================
-// URL DE PRODUÇÃO DO CHURCHDROP
-// =========================================================================================
-export const API_URL = "https://script.google.com/macros/s/AKfycbxn47Q9vWG73NyFyOy0FejhJEpomaa2G-xPIzpSbL87wxTJT7-C2aVQU4J_dfDcYAOa/exec"; 
-const CACHE_KEY = "churchdrop_files_cache";
-
-export const getServiceName = (date: Date = new Date()): string => {
-  const day = date.getDay(); // 0 = Domingo, 1 = Segunda...
-  const dateStr = date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-  
-  let name = "";
-
-  switch (day) {
-    case 1: name = "Prosperidade com Deus"; break;
-    case 2: name = "Corrente dos 70"; break;
-    case 3: name = "Escola da Fé Inteligente"; break;
-    case 4: name = "Terapia do Amor"; break;
-    case 5: name = "Sessão do Descarrego"; break;
-    case 6: name = "Jejum das Causas Impossíveis"; break; 
-    case 0: name = "Encontro com Deus"; break; 
-    default: name = "Evento Extra";
-  }
-
-  return `${name} - ${dateStr}`;
-};
-
-export const getAlternativeNames = (date: Date): string[] => {
-  const day = date.getDay();
-  if (day === 6) return ["Encontro Jovem do Sábado"];
-  if (day === 0) return ["Encontro Jovem do Domingo"];
-  return [];
+// Only memory: borrowed devices must not retain the library after logout/reload.
+let snapshot: DriveFile[] = [];
+export interface PendingUpload {id: string; name: string; complete: boolean;}
+let pendingSnapshot: PendingUpload[] = [];
+let uploads = new WeakMap<File, {sessionUrl: string; id?: string}>();
+export function clearLibraryCache() { snapshot = []; pendingSnapshot = []; }
+export function getPendingUploads(): PendingUpload[] {return pendingSnapshot.map(file => ({...file}));}
+/** Recovery after reload uses only server metadata, never a persisted upload capability or owner token. */
+export async function publishPendingUpload(id: string, signal?: AbortSignal): Promise<void> {
+  if (!pendingSnapshot.some(file => file.id === id && file.complete)) throw new Error('Atualize a biblioteca para verificar este envio.');
+  const result = await appApi<{file: DriveFile}>('/api/media', {action: 'publishUpload', id, confirmShare: true}, {signal});
+  if (!readDriveFiles([result.file]) || result.file.id !== id) throw new Error('Não foi possível confirmar a publicação. Atualize a biblioteca.');
+  snapshot = [...snapshot.filter(file => file.id !== id), result.file];
+  pendingSnapshot = pendingSnapshot.filter(file => file.id !== id);
 }
-
-export const groupItemsByEvent = (items: MediaItem[]) => {
+export function clearOperatorData() {
+  clearLibraryCache(); uploads = new WeakMap();
+  try { localStorage.removeItem('churchdrop_files_cache'); } catch { /* Storage may be unavailable. */ }
+}
+export const getServiceName = (date = new Date()): string => {
+  const names = ['Encontro com Deus', 'Prosperidade com Deus', 'Corrente dos 70', 'Escola da Fé Inteligente',
+    'Terapia do Amor', 'Sessão do Descarrego', 'Jejum das Causas Impossíveis'];
+  return `${names[date.getDay()]} - ${date.toLocaleDateString('pt-BR', {day: '2-digit', month: '2-digit'})}`;
+};
+export const getAlternativeNames = (date: Date): string[] => date.getDay() === 6 ? ['Encontro Jovem do Sábado'] : date.getDay() === 0 ? ['Encontro Jovem do Domingo'] : [];
+export function groupItemsByEvent(items: MediaItem[]) {
   return items.reduce((groups, item) => {
-    const groupName = item.eventName || "Geral";
-    if (!groups[groupName]) {
-      groups[groupName] = [];
-    }
-    groups[groupName].push(item);
-    return groups;
-  }, {} as Record<string, MediaItem[]>);
-};
-
-// Renomear Arquivo
-export const renameFileInScript = async (id: string, newName: string): Promise<any> => {
-  const payload = JSON.stringify({ action: 'rename', id: id, newName: newName });
-  
-  // Atualiza cache local imediatamente (UI Otimista)
-  const cached = localStorage.getItem(CACHE_KEY);
-  if (cached) {
-    try {
-      const files = JSON.parse(cached);
-      const updatedFiles = files.map((f: any) => {
-        if (f.id === id) return { ...f, name: newName };
-        return f;
-      });
-      localStorage.setItem(CACHE_KEY, JSON.stringify(updatedFiles));
-    } catch(e) {}
+    (groups[item.eventName || 'Geral'] ||= []).push(item); return groups;
+  }, Object.create(null) as Record<string, MediaItem[]>);
+}
+export async function renameFileInScript(id: string, name: string) {
+  const result = await appApi('/api/media', {action: 'rename', id, name});
+  snapshot = snapshot.map(file => file.id === id ? {...file, name} : file);
+  return result;
+}
+export async function setFilePreservation(id: string, preserved: boolean, signal?: AbortSignal): Promise<void> {
+  if (typeof preserved !== 'boolean') throw new Error('Opção de preservação inválida.');
+  const result = await appApi<{id: string; preserved: boolean}>('/api/media', {action: 'preserve', id, preserve: preserved}, {signal});
+  if (result.id !== id || result.preserved !== preserved) throw new Error('Não foi possível confirmar a preservação. Atualize a biblioteca.');
+  snapshot = snapshot.map(file => file.id === id ? {...file, preserved} : file);
+}
+export async function deleteFileFromScript(id: string) {
+  const result = await appApi('/api/media', {action: 'trash', id});
+  snapshot = snapshot.filter(file => file.id !== id);
+  return result;
+}
+export async function fetchTextContent(id: string): Promise<string> {
+  const data = await appApi<{content: string}>('/api/media', {action: 'getText', id});
+  if (typeof data.content !== 'string') throw new Error('O texto não está disponível.');
+  return data.content;
+}
+/** Retains the same session across manual retries, including publication-only retries. */
+export interface UploadStatus {
+  phase: 'opening' | 'transferring' | 'publishing' | 'complete';
+  confirmedBytes: number;
+  totalBytes: number;
+}
+export async function uploadFileToScript(file: File, eventName = getServiceName(), onProgress?: (percent: number) => void,
+  options: {signal?: AbortSignal; shareByLink: boolean; onStatus?: (status: UploadStatus) => void} = {shareByLink: false}) {
+  if (!options.shareByLink) throw new Error('Confirme que o material pode ser compartilhado por link.');
+  options.signal?.throwIfAborted();
+  let current = uploads.get(file);
+  const resume = Boolean(current);
+  const status = (phase: UploadStatus['phase'], confirmedBytes = 0) => options.onStatus?.({phase, confirmedBytes, totalBytes: file.size});
+  status('opening');
+  if (!current) {
+    const created = await appApi<{sessionUrl: string}>('/api/media', {action: 'beginUpload', name: file.name,
+      mimeType: file.type || 'application/octet-stream', size: file.size, eventName, shareByLink: true}, options);
+    current = {sessionUrl: created.sessionUrl}; uploads.set(file, current);
   }
-
-  try {
-    const response = await fetch(API_URL, {
-      method: "POST",
-      body: payload
-    });
-    return await response.json();
-  } catch (e) {
-    console.error("Erro ao renomear:", e);
-    throw e;
+  if (!current.id) {
+    const result = await uploadResumable(current.sessionUrl, file, {signal: options.signal, resume,
+      onProgress: (received, total) => {
+        status('transferring', received);
+        onProgress?.(Math.min(99, Math.floor(received / total * 100)));
+      }});
+    current.id = result.id;
   }
-};
-
-// Exclusão Real
-export const deleteFileFromScript = async (id: string): Promise<any> => {
-  const payload = JSON.stringify({ action: 'delete', id: id });
-  
-  // Atualiza cache local imediatamente para UI otimista
-  const cached = localStorage.getItem(CACHE_KEY);
-  if (cached) {
-    try {
-      const files = JSON.parse(cached);
-      const newFiles = files.filter((f: any) => f.id !== id);
-      localStorage.setItem(CACHE_KEY, JSON.stringify(newFiles));
-    } catch(e) {}
-  }
-
-  try {
-    const response = await fetch(API_URL, {
-      method: "POST",
-      body: payload
-      // Fetch lida com CORS e Redirects automaticamente
-    });
-    return await response.json();
-  } catch (e) {
-    console.error("Erro ao deletar:", e);
-    throw e;
-  }
-};
-
-// Obter Conteúdo de Texto (Proxy via GAS)
-export const fetchTextContent = async (id: string): Promise<string> => {
-  try {
-    const payload = JSON.stringify({ action: 'getText', id: id });
-    const response = await fetch(API_URL, {
-      method: "POST",
-      body: payload
-    });
-    const data = await response.json();
-    if (data.status === 'success' && data.content) {
-      return data.content;
-    } else {
-      throw new Error(data.message || 'Falha ao obter texto');
-    }
-  } catch (e) {
-    console.error("Erro ao buscar texto:", e);
-    throw e;
-  }
-};
-
-// Upload usando FETCH (Estável para GAS) com Simulação Inteligente e Web Worker
-export const uploadFileToScript = async (
-  file: File, 
-  customEventName?: string, 
-  onProgress?: (percent: number) => void
-): Promise<any> => {
-  return new Promise((resolve, reject) => {
-    const eventName = customEventName || getServiceName(new Date());
-
-    // --- SIMULAÇÃO INTELIGENTE DE PROGRESSO ---
-    const fileSizeMB = file.size / (1024 * 1024);
-    const estimatedSpeedMBps = 0.5; // 500KB/s (conservador para internet móvel)
-    const estimatedDurationSec = Math.max(1, fileSizeMB / estimatedSpeedMBps);
-    const intervalMs = (estimatedDurationSec * 1000) / 100; // Intervalo para cada 1%
-
-    let currentProgress = 0;
-    let progressInterval: any = null;
-
-    if (onProgress) {
-        onProgress(1); // Começa
-        progressInterval = setInterval(() => {
-            currentProgress += 1;
-            if (currentProgress > 85 && currentProgress < 95) {
-               if (Math.random() > 0.8) currentProgress += 0; // Pausa as vezes
-            }
-            if (currentProgress >= 95) {
-               currentProgress = 95; // Espera a resposta real do servidor
-            }
-            onProgress(Math.floor(currentProgress));
-        }, intervalMs);
-    }
-
-    // Cria um Web Worker inline para processar o base64 e fazer o upload sem travar a UI
-    const workerCode = `
-      self.onmessage = async function(e) {
-        try {
-          const { file, eventName, apiUrl } = e.data;
-          
-          const reader = new FileReader();
-          reader.onload = async function() {
-            try {
-              const resultStr = reader.result || "";
-              const base64 = resultStr.includes(',') ? resultStr.split(',')[1] : resultStr;
-              
-              const payload = JSON.stringify({
-                action: 'upload',
-                filename: file.name,
-                mimeType: file.type,
-                bytes: base64,
-                eventName: eventName 
-              });
-
-              const response = await fetch(apiUrl, {
-                method: "POST",
-                body: payload
-              });
-              
-              const data = await response.json();
-              if (data.status === 'error') {
-                self.postMessage({ success: false, error: data.message });
-              } else {
-                self.postMessage({ success: true, data: data });
-              }
-            } catch (err) {
-              self.postMessage({ success: false, error: err.message || "Erro no fetch" });
-            }
-          };
-          reader.onerror = function() {
-            self.postMessage({ success: false, error: "Erro na leitura do arquivo" });
-          };
-          reader.readAsDataURL(file);
-        } catch (err) {
-          self.postMessage({ success: false, error: err.message || "Erro no worker" });
-        }
-      };
-    `;
-
-    const blob = new Blob([workerCode], { type: 'application/javascript' });
-    const workerUrl = URL.createObjectURL(blob);
-    const worker = new Worker(workerUrl);
-
-    worker.onmessage = (e) => {
-      if (progressInterval) clearInterval(progressInterval);
-      worker.terminate();
-      URL.revokeObjectURL(workerUrl);
-
-      if (e.data.success) {
-        if (onProgress) onProgress(100);
-        resolve(e.data.data);
-      } else {
-        reject(new Error(e.data.error || "Falha no envio."));
+  status('publishing', file.size);
+  const published = await appApi<{file: DriveFile}>('/api/media', {action: 'publishUpload', id: current.id, confirmShare: true}, options);
+  if (!readDriveFiles([published.file])) throw new Error('Não foi possível confirmar a publicação. Tente novamente.');
+  uploads.delete(file); onProgress?.(100);
+  status('complete', file.size);
+  return {status: 'success', file: published.file};
+}
+export async function fetchFilesFromScript(signal?: AbortSignal): Promise<MediaItem[]> {
+  const all: DriveFile[] = [], pending: PendingUpload[] = [], cursors = new Set<string>();
+  let cursor: string | undefined;
+  for (let page = 0; page < 100; page++) {
+    const result: {files: unknown; pendingUploads?: unknown; nextPageToken?: unknown} = await appApi('/api/media', undefined, {signal, cursor});
+    const files = readDriveFiles(result.files);
+    if (!files) throw new Error('A lista de arquivos retornada é inválida.');
+    const pendingPage = result.pendingUploads ?? [];
+    if (!Array.isArray(pendingPage) || pendingPage.some(file => !file || typeof file.id !== 'string' || !file.id ||
+        typeof file.name !== 'string' || typeof file.complete !== 'boolean')) throw new Error('A lista de envios pendentes é inválida.');
+    pending.push(...pendingPage);
+    all.push(...files);
+    if (!result.nextPageToken) {
+      if (!readDriveFiles(all)) throw new Error('A lista contém arquivos duplicados. Atualize novamente.');
+      const ids = new Set(all.map(file => file.id));
+      for (const file of pending) {
+        if (ids.has(file.id)) throw new Error('A lista contém envios duplicados. Atualize novamente.');
+        ids.add(file.id);
       }
-    };
-
-    worker.onerror = (err) => {
-      if (progressInterval) clearInterval(progressInterval);
-      worker.terminate();
-      URL.revokeObjectURL(workerUrl);
-      reject(new Error("Erro interno no processamento do arquivo."));
-    };
-
-    // Inicia o worker passando o arquivo e os dados
-    worker.postMessage({ file, eventName, apiUrl: API_URL });
-  });
-};
-
-export const fetchFilesFromScript = async (): Promise<MediaItem[]> => {
-  if (!API_URL) return [];
-  
-  const cachedData = localStorage.getItem(CACHE_KEY);
-  let localItems: MediaItem[] = [];
-  
-  if (cachedData) {
-    try {
-      const parsedCache = JSON.parse(cachedData);
-      localItems = mapResponseToMediaItems(parsedCache);
-    } catch (e) {
-      console.error("Cache corrompido");
+      snapshot = all; pendingSnapshot = pending; return mapDriveFiles(all);
     }
+    if (typeof result.nextPageToken !== 'string' || result.nextPageToken.length > 2000 || cursors.has(result.nextPageToken)) break;
+    cursor = result.nextPageToken; cursors.add(cursor);
   }
+  throw new Error('Não foi possível carregar a biblioteca completa. Tente novamente.');
+}
+export function getCachedFiles(): MediaItem[] { return mapDriveFiles(snapshot); }
 
-  try {
-    const response = await fetch(`${API_URL}?t=${Date.now()}`); 
-    const text = await response.text();
-    
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch (e) {
-      console.error("Recebi HTML em vez de JSON.", text);
-      throw new Error("Erro de conexão com o banco de dados.");
+/** Read-only review. Never replaces the library snapshot or runs a cleanup. */
+export async function reviewOlderFiles(days: 7 | 14, signal?: AbortSignal): Promise<MediaItem[]> {
+  if (days !== 7 && days !== 14) throw new Error('Escolha 7 ou 14 dias.');
+  const all: DriveFile[] = [], cursors = new Set<string>();
+  let cursor: string | undefined;
+  for (let page = 0; page < 100; page++) {
+    const result = await appApi<{files: unknown; nextPageToken?: unknown}>('/api/media',
+      {action: 'retentionPreview', days, ...(cursor ? {cursor} : {})}, {signal});
+    const files = readDriveFiles(result.files);
+    if (!files) throw new Error('Não foi possível conferir os arquivos antigos.');
+    all.push(...files);
+    if (!result.nextPageToken) {
+      if (!readDriveFiles(all)) throw new Error('A revisão contém arquivos duplicados. Tente novamente.');
+      return mapDriveFiles(all);
     }
-    
-    if (data.status === 'success' && Array.isArray(data.files)) {
-       localStorage.setItem(CACHE_KEY, JSON.stringify(data.files));
-       return mapResponseToMediaItems(data.files);
-    }
-    return localItems.length > 0 ? localItems : [];
-  } catch (error) {
-    console.error("Falha ao buscar lista de arquivos.", error);
-    if (localItems.length > 0) return localItems;
-    return [];
+    if (typeof result.nextPageToken !== 'string' || result.nextPageToken.length > 2000 || cursors.has(result.nextPageToken)) break;
+    cursor = result.nextPageToken; cursors.add(cursor);
   }
-};
-
-const mapResponseToMediaItems = (rawFiles: any[]): MediaItem[] => {
-  return rawFiles.map((f: any) => {
-     // Lógica de URL CORRIGIDA
-     let previewUrl = "";
-     let downloadUrl = f.downloadUrl;
-
-     if (!downloadUrl && f.id) {
-        // Link direto de download para fallback
-        downloadUrl = `https://drive.google.com/uc?export=download&id=${f.id}`;
-     }
-          if (f.id) {
-        // Tenta usar a URL de thumbnail fornecida pelo Drive, se existir
-        if (f.thumbnailLink) {
-             previewUrl = f.thumbnailLink;
-        } else if (f.mimeType.includes('image')) {
-             previewUrl = `https://lh3.googleusercontent.com/d/${f.id}=s1000`;
-        } else if (f.mimeType.includes('video')) {
-             // Endpoint de thumbnail de vídeo do Drive
-             previewUrl = `https://lh3.googleusercontent.com/d/${f.id}=s1000`;
-        }
-      }
-
-      return {
-        id: f.id,
-        name: f.name,
-        url: previewUrl, 
-        downloadUrl: downloadUrl || "",
-        type: f.mimeType.includes('video') ? 'video' : f.mimeType.includes('audio') ? 'audio' : f.mimeType.includes('pdf') ? 'pdf' : f.mimeType.includes('text') ? 'text' : 'image',
-        size: 'Drive', 
-        date: new Date(f.date), 
-        eventName: f.folderName || "Geral"
-      };
-   });
-};
-
-export const getCachedFiles = (): MediaItem[] => {
-    const cachedData = localStorage.getItem(CACHE_KEY);
-    if (cachedData) {
-        try {
-            return mapResponseToMediaItems(JSON.parse(cachedData));
-        } catch(e) { return []; }
-    }
-    return [];
+  throw new Error('Não foi possível concluir a revisão. Tente novamente.');
 }

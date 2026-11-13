@@ -1,13 +1,21 @@
-import React, { useState, useEffect, useRef } from 'react';
+import {MediaPlayback} from './MediaPlayback';
+import {PdfPreview} from './PdfPreview';
+import {useDialogEscape} from '../hooks/useDialogEscape';
+import {isTextEntry} from '../services/keyboard';
+import {ImagePreview} from './ImagePreview';
+import {useBodyScrollLock} from '../hooks/useBodyScrollLock';
+import React, { useState, useEffect } from 'react';
 import { 
   X, Download, ExternalLink, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, 
-  RotateCw, Maximize2, Minimize2, Copy, Check, FileText, Music, Video as VideoIcon,
-  Play, Pause, Volume2, VolumeX, Sparkles, Share2
+  RotateCw, Maximize2, Copy, Check, FileText, CheckSquare, Square
 } from 'lucide-react';
 import { MediaItem } from '../types';
 
 interface MediaViewerModalProps {
   item: MediaItem | null;
+  isSelected?:boolean;
+  selectedCount?:number;
+  onToggleSelection?:()=>void;
   onClose: () => void;
   onNext: () => void;
   onPrev: () => void;
@@ -19,6 +27,7 @@ interface MediaViewerModalProps {
 
 export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
   item,
+  isSelected=false,selectedCount=0,onToggleSelection,
   onClose,
   onNext,
   onPrev,
@@ -27,64 +36,60 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
   onDownload,
   showToast
 }) => {
-  if (!item) return null;
-
   // Image Zoom & Rotate Controls
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
-  const [isFullscreen, setIsFullscreen] = useState(false);
   const [copiedText, setCopiedText] = useState(false);
-  const [videoError, setVideoError] = useState(false);
-  
-  // Audio Controls
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [audioProgress, setAudioProgress] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [isMuted, setIsMuted] = useState(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-
   // Swipe Gestures for Mobile
   const [touchStartX, setTouchStartX] = useState(0);
   const [touchEndX, setTouchEndX] = useState(0);
 
   useEffect(() => {
+    if (!item) return;
     // Reset state on media item change
-    setZoom(1);
-    setRotation(0);
-    setVideoError(false);
-    setIsPlaying(false);
-    setAudioProgress(0);
     setCopiedText(false);
 
+  }, [item?.id]);
+  useEffect(() => {
+    if(!item)return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-      if (e.key === 'ArrowRight' && hasNext) onNext();
-      if (e.key === 'ArrowLeft' && hasPrev) onPrev();
+      if (e.defaultPrevented || isTextEntry(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.target instanceof Element && e.target.closest('audio, video')) return;
+      if (item.type === 'image' && zoom > 1) return;
+      if (e.key === 'ArrowRight' && hasNext) {e.preventDefault();onNext();}
+      if (e.key === 'ArrowLeft' && hasPrev) {e.preventDefault();onPrev();}
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [item, hasNext, hasPrev]);
+  }, [item, hasNext, hasPrev, zoom, onClose, onNext, onPrev]);
+  useEffect(()=>{setZoom(1);setRotation(0);setTouchStartX(0);setTouchEndX(0);},[item?.id]);
+  useBodyScrollLock(Boolean(item));
+  useDialogEscape(Boolean(item), onClose);
+  if (!item) return null;
+  const selectionTarget=item.type==='image'?'esta foto':'este arquivo';
 
-  const handleCopyText = (content?: string) => {
+  const handleCopyText = async (content?: string) => {
     if (!content) return;
-    navigator.clipboard.writeText(content);
+    try { await navigator.clipboard.writeText(content); }
+    catch {showToast("Não foi possível copiar o texto. Tente novamente.", "error");return;}
     setCopiedText(true);
     showToast('Texto copiado para a área de transferência!', 'success');
     setTimeout(() => setCopiedText(false), 2000);
   };
 
   const handleTouchStart = (e: React.TouchEvent) => {
-    setTouchStartX(e.targetTouches[0].clientX);
+    if(['audio','video','pdf'].includes(item.type)||e.targetTouches.length!==1 || (item.type==='image'&&zoom>1)){setTouchStartX(0);setTouchEndX(0);return;}
+    setTouchEndX(0);setTouchStartX(e.targetTouches[0].clientX);
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
+    if(['audio','video','pdf'].includes(item.type)||e.targetTouches.length!==1 || (item.type==='image'&&zoom>1)){setTouchStartX(0);setTouchEndX(0);return;}
     setTouchEndX(e.targetTouches[0].clientX);
   };
 
   const handleTouchEnd = () => {
-    if (!touchStartX || !touchEndX) return;
+    if (!touchStartX || !touchEndX || (item.type==='image'&&zoom>1)) return;
     const diffX = touchStartX - touchEndX;
     if (diffX > 50 && hasNext) onNext();
     if (diffX < -50 && hasPrev) onPrev();
@@ -92,58 +97,45 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
     setTouchEndX(0);
   };
 
-  const toggleAudioPlay = () => {
-    if (!audioRef.current) return;
-    if (isPlaying) {
-      audioRef.current.pause();
-      setIsPlaying(false);
-    } else {
-      audioRef.current.play();
-      setIsPlaying(true);
-    }
-  };
-
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
-  };
-
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-md animate-in fade-in duration-200">
+    <div role="dialog" aria-modal="true" aria-label={`Visualizar ${item.name}`} className="media-viewer fixed inset-0 z-[100] flex flex-col bg-neutral-50/95 dark:bg-black/95 backdrop-blur-md animate-in fade-in duration-200">
       
       {/* Top Bar Navigation */}
-      <div className="absolute top-0 inset-x-0 z-20 flex items-center justify-between p-4 bg-gradient-to-b from-black/80 to-transparent text-white">
-        <div className="flex items-center gap-3 min-w-0 pr-4">
-          <span className="text-xs font-bold uppercase tracking-widest text-univer-gold px-2.5 py-1 bg-white/10 rounded-full border border-white/10 shrink-0">
-            {item.type}
+      <div className="relative shrink-0 z-20 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 p-3 bg-white dark:bg-black/80 text-neutral-900 dark:text-white">
+        <div className="flex items-center gap-3 min-w-0 basis-full sm:basis-auto sm:flex-1 pr-4">
+          <span className="text-xs font-bold uppercase tracking-widest text-blue-700 dark:text-univer-gold px-2.5 py-1 bg-blue-50 dark:bg-white/10 rounded-full border border-blue-100 dark:border-white/10 shrink-0">
+            {{image:'Imagem',video:'Vídeo',audio:'Áudio',pdf:'PDF',text:'Texto'}[item.type]}
           </span>
           <h2 className="text-sm md:text-base font-bold truncate max-w-md" title={item.name}>
             {item.name}
           </h2>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex w-full sm:w-auto flex-wrap justify-end items-center gap-1 sm:gap-2 shrink-0 ml-auto">
           {/* Zoom controls for images */}
           {item.type === 'image' && (
             <>
               <button 
                 onClick={() => setZoom(prev => Math.max(0.5, prev - 0.25))}
-                className="p-2 hover:bg-white/20 rounded-lg text-white/80 hover:text-white transition-colors"
+                className="p-2 hover:bg-neutral-200 dark:hover:bg-white/20 rounded-lg text-neutral-700 dark:text-white/80 hover:text-neutral-900 dark:hover:text-white transition-colors"
                 title="Reduzir Zoom"
               >
                 <ZoomOut size={18} />
               </button>
               <button 
                 onClick={() => setZoom(prev => Math.min(3, prev + 0.25))}
-                className="p-2 hover:bg-white/20 rounded-lg text-white/80 hover:text-white transition-colors"
+                className="p-2 hover:bg-neutral-200 dark:hover:bg-white/20 rounded-lg text-neutral-700 dark:text-white/80 hover:text-neutral-900 dark:hover:text-white transition-colors"
                 title="Aumentar Zoom"
               >
                 <ZoomIn size={18} />
               </button>
+              <button
+                onClick={()=>{setZoom(1);setRotation(0);}}
+                className="p-2 hover:bg-neutral-200 dark:hover:bg-white/20 rounded-lg text-neutral-700 dark:text-white/80 hover:text-neutral-900 dark:hover:text-white"
+                title="Ajustar imagem à tela"><Maximize2 size={18}/></button>
               <button 
                 onClick={() => setRotation(prev => (prev + 90) % 360)}
-                className="p-2 hover:bg-white/20 rounded-lg text-white/80 hover:text-white transition-colors"
+                className="p-2 hover:bg-neutral-200 dark:hover:bg-white/20 rounded-lg text-neutral-700 dark:text-white/80 hover:text-neutral-900 dark:hover:text-white transition-colors"
                 title="Rotacionar"
               >
                 <RotateCw size={18} />
@@ -164,8 +156,8 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
           {/* Drive Direct Link if ID exists */}
           {item.id && !item.id.startsWith('temp_') && (
             <button 
-              onClick={() => window.open(`https://drive.google.com/file/d/${item.id}/view`, '_blank')}
-              className="p-2 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors text-xs font-semibold hidden sm:flex items-center gap-1.5"
+              onClick={() => window.open(`https://drive.google.com/file/d/${encodeURIComponent(item.id)}/view`, '_blank', 'noopener,noreferrer')}
+              className="p-2 bg-neutral-100 dark:bg-white/10 hover:bg-neutral-200 dark:hover:bg-white/20 text-neutral-900 dark:text-white rounded-lg transition-colors text-xs font-semibold hidden sm:flex items-center gap-1.5"
               title="Abrir no Google Drive"
             >
               <ExternalLink size={16} />
@@ -175,7 +167,7 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
 
           <button 
             onClick={onClose}
-            className="p-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white rounded-lg transition-colors ml-2"
+            className="p-2 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white rounded-lg transition-colors sm:ml-2"
             title="Fechar (ESC)"
           >
             <X size={20} />
@@ -185,7 +177,7 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
 
       {/* Main Content Viewer Canvas */}
       <div 
-        className="w-full h-full flex items-center justify-center p-4 pt-16 pb-16 overflow-hidden relative"
+        className="w-full flex-1 min-h-0 flex items-center justify-center p-2 sm:p-3 overflow-hidden relative"
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
@@ -193,149 +185,20 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
         
         {/* IMAGE VIEWER */}
         {item.type === 'image' && (
-          <div className="relative max-w-full max-h-full flex items-center justify-center overflow-auto p-4">
-            <img 
-              src={item.url} 
-              alt={item.name}
-              style={{
-                transform: `scale(${zoom}) rotate(${rotation}deg)`,
-                transition: 'transform 0.2s ease-out'
-              }}
-              className="max-w-full max-h-[80vh] object-contain select-none drop-shadow-2xl rounded-lg"
-            />
-          </div>
+          <ImagePreview key={item.id} src={item.url} name={item.name} zoom={zoom} rotation={rotation}/>
         )}
 
-        {/* VIDEO VIEWER */}
-        {item.type === 'video' && (
-          <div className="w-full max-w-4xl max-h-[80vh] flex flex-col items-center justify-center bg-black rounded-2xl overflow-hidden shadow-2xl border border-neutral-800">
-            {videoError ? (
-              <div className="p-8 text-center max-w-md">
-                <VideoIcon size={48} className="text-amber-400 mx-auto mb-3" />
-                <h3 className="text-lg font-bold text-white mb-2">Reprodução Direta Indisponível</h3>
-                <p className="text-xs text-neutral-400 mb-6">
-                  Este vídeo requer download direto ou abertura no Google Drive.
-                </p>
-                <div className="flex justify-center gap-3">
-                  {!item.id.startsWith('temp_') && (
-                    <button 
-                      onClick={() => window.open(`https://drive.google.com/file/d/${item.id}/view`, '_blank')}
-                      className="px-4 py-2 bg-white text-black font-bold rounded-xl text-xs hover:bg-neutral-200 transition-colors"
-                    >
-                      Abrir no Google Drive
-                    </button>
-                  )}
-                  <button 
-                    onClick={() => onDownload(item.downloadUrl || item.url)}
-                    className="px-4 py-2 bg-univer-blue text-white font-bold rounded-xl text-xs hover:bg-blue-600 transition-colors"
-                  >
-                    Baixar Vídeo
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <video 
-                controls 
-                playsInline
-                ref={(el) => {
-                  if (el) {
-                    el.play().catch(() => {
-                      // Autoplay failed or was blocked by browser policy
-                    });
-                  }
-                }}
-                onError={(e) => {
-                  e.stopPropagation();
-                  setVideoError(true);
-                }}
-                src={item.downloadUrl || item.url} 
-                className="w-full max-h-[75vh] object-contain"
-              >
-                Seu navegador não suporta a reprodução deste vídeo.
-              </video>
-            )}
-          </div>
-        )}
-
-        {/* AUDIO VIEWER */}
-        {item.type === 'audio' && (
-          <div className="w-full max-w-lg bg-neutral-900 border border-neutral-800 p-8 rounded-3xl shadow-2xl flex flex-col items-center text-center">
-            <div className="w-24 h-24 rounded-full bg-purple-950/60 border-2 border-purple-500/40 flex items-center justify-center text-purple-400 mb-6 shadow-xl animate-pulse">
-              <Music size={44} />
-            </div>
-
-            <h3 className="text-lg font-bold text-white mb-1 line-clamp-1">{item.name}</h3>
-            <span className="text-xs text-neutral-400 font-semibold mb-6">{item.eventName}</span>
-
-            <audio 
-              ref={audioRef} 
-              src={item.downloadUrl || item.url} 
-              onTimeUpdate={() => {
-                if (!audioRef.current) return;
-                setCurrentTime(audioRef.current.currentTime);
-                setDuration(audioRef.current.duration || 0);
-                setAudioProgress((audioRef.current.currentTime / (audioRef.current.duration || 1)) * 100);
-              }}
-              onEnded={() => setIsPlaying(false)}
-            />
-
-            {/* Audio Progress Bar */}
-            <div className="w-full mb-6">
-              <input 
-                type="range" 
-                min="0" 
-                max="100" 
-                value={audioProgress || 0}
-                onChange={(e) => {
-                  const pct = parseFloat(e.target.value);
-                  setAudioProgress(pct);
-                  if (audioRef.current && duration) {
-                    audioRef.current.currentTime = (pct / 100) * duration;
-                  }
-                }}
-                className="w-full h-1.5 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-purple-500"
-              />
-              <div className="flex justify-between text-[11px] font-mono text-neutral-400 mt-2">
-                <span>{formatTime(currentTime)}</span>
-                <span>{formatTime(duration)}</span>
-              </div>
-            </div>
-
-            {/* Play/Pause & Volume controls */}
-            <div className="flex items-center gap-6">
-              <button 
-                onClick={() => {
-                  setIsMuted(!isMuted);
-                  if (audioRef.current) audioRef.current.muted = !isMuted;
-                }}
-                className="p-3 text-neutral-400 hover:text-white transition-colors"
-              >
-                {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
-              </button>
-
-              <button 
-                onClick={toggleAudioPlay}
-                className="w-14 h-14 rounded-full bg-purple-600 hover:bg-purple-500 text-white flex items-center justify-center shadow-lg shadow-purple-600/40 transition-transform active:scale-95"
-              >
-                {isPlaying ? <Pause size={24} /> : <Play size={24} className="ml-1 fill-white" />}
-              </button>
-
-              <button 
-                onClick={() => onDownload(item.downloadUrl || item.url)}
-                className="p-3 text-neutral-400 hover:text-white transition-colors"
-                title="Baixar Áudio"
-              >
-                <Download size={20} />
-              </button>
-            </div>
+        {(item.type === 'video' || item.type === 'audio') && (
+          <div className="w-full max-w-4xl max-h-full overflow-y-auto">
+            <MediaPlayback key={item.id} item={item} onDownload={onDownload}/>
           </div>
         )}
 
         {/* TEXT / ANOTAÇÃO VIEWER */}
         {item.type === 'text' && (
-          <div className="w-full max-w-2xl bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[80vh]">
-            <div className="p-4 bg-neutral-800/80 border-b border-neutral-700/60 flex items-center justify-between">
-              <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm">
+          <div className="w-full max-w-2xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[80vh]">
+            <div className="p-4 bg-neutral-100 dark:bg-neutral-800/80 border-b border-neutral-200 dark:border-neutral-700/60 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400 font-bold text-sm">
                 <FileText size={18} />
                 <span>Conteúdo de Texto</span>
               </div>
@@ -347,46 +210,26 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
                 <span>{copiedText ? 'Copiado!' : 'Copiar Texto'}</span>
               </button>
             </div>
-            <div className="p-6 overflow-y-auto font-mono text-sm text-neutral-200 whitespace-pre-wrap leading-relaxed select-text">
+            <div className="p-6 overflow-y-auto font-mono text-sm text-neutral-800 dark:text-neutral-200 whitespace-pre-wrap leading-relaxed select-text">
               {item.textContent || 'Carregando conteúdo do arquivo...'}
             </div>
           </div>
         )}
 
-        {/* PDF VIEWER */}
-        {item.type === 'pdf' && (
-          <div className="w-full max-w-4xl h-[80vh] bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden shadow-2xl flex flex-col">
-            <iframe 
-              src={`https://docs.google.com/viewer?url=${encodeURIComponent(item.downloadUrl || item.url)}&embedded=true`}
-              className="w-full h-full border-0"
-              title="PDF Viewer"
-            />
-          </div>
-        )}
+        {item.type === 'pdf' && <PdfPreview key={item.id} item={item} onDownload={onDownload}/>}
 
-        {/* Navigation Arrows */}
-        {hasPrev && (
-          <button 
-            onClick={onPrev}
-            className="absolute left-4 p-3 bg-black/60 hover:bg-univer-blue text-white rounded-full transition-all backdrop-blur-md shadow-xl active:scale-95 z-20"
-            title="Anterior (Seta Esquerda)"
-          >
-            <ChevronLeft size={28} />
-          </button>
-        )}
-
-        {hasNext && (
-          <button 
-            onClick={onNext}
-            className="absolute right-4 p-3 bg-black/60 hover:bg-univer-blue text-white rounded-full transition-all backdrop-blur-md shadow-xl active:scale-95 z-20"
-            title="Próximo (Seta Direita)"
-          >
-            <ChevronRight size={28} />
-          </button>
-        )}
 
       </div>
-
+      {(hasPrev||hasNext||onToggleSelection)&&<nav aria-label="Navegação entre arquivos" className="flex shrink-0 items-center justify-between gap-2 bg-white dark:bg-black px-3 py-2 text-neutral-900 dark:text-white">
+        <button type="button" onClick={onPrev} disabled={!hasPrev} aria-label="Anterior" title="Anterior (Seta Esquerda)" className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs disabled:opacity-30"><ChevronLeft size={22}/><span className="hidden sm:inline">Anterior</span></button>
+        {onToggleSelection&&<div className="flex min-w-0 flex-col items-center gap-1">
+          <button type="button" onClick={onToggleSelection} aria-pressed={isSelected} className={`flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold ${isSelected?'bg-blue-600 text-white':'bg-neutral-100 dark:bg-white text-neutral-900'}`}>
+            {isSelected?<CheckSquare size={18}/>:<Square size={18}/>}<span>{isSelected?'Desmarcar':'Selecionar'} {selectionTarget}</span>
+          </button>
+          <span role="status" className="text-[10px] text-neutral-600 dark:text-neutral-400">{selectedCount} na seleção</span>
+        </div>}
+        <button type="button" onClick={onNext} disabled={!hasNext} aria-label="Próximo" title="Próximo (Seta Direita)" className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs disabled:opacity-30"><span className="hidden sm:inline">Próximo</span><ChevronRight size={22}/></button>
+      </nav>}
     </div>
   );
 };
