@@ -27,8 +27,8 @@ export function ImagePreview({src,name,zoom,rotation}:{src:string;name:string;zo
     onPointerMove={event=>{const start=drag.current;if(!start)return;event.currentTarget.scrollLeft=start.left+start.x-event.clientX;event.currentTarget.scrollTop=start.top+start.y-event.clientY;}}
     onPointerUp={event=>{drag.current=null;if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId);}}
     onPointerCancel={()=>{drag.current=null;}}>
-    {loading&&!failed&&<p role="status" className="absolute inset-0 flex items-center justify-center text-sm text-neutral-400">Carregando imagem…</p>}
-    {failed?<p role="alert" className="flex h-full items-center justify-center p-6 text-center text-sm text-neutral-300">Não foi possível abrir a imagem. Tente baixar o arquivo ou abrir no Drive.</p>:<div className="relative" style={{width:layout?.canvasWidth??'100%',height:layout?.canvasHeight??'100%'}}>
+    {loading&&!failed&&<p role="status" className="absolute inset-0 flex items-center justify-center text-sm text-neutral-600 dark:text-neutral-400">Carregando imagem…</p>}
+    {failed?<p role="alert" className="flex h-full items-center justify-center p-6 text-center text-sm text-neutral-700 dark:text-neutral-300">Não foi possível abrir a imagem. Tente baixar o arquivo ou abrir no Drive.</p>:<div className="relative" style={{width:layout?.canvasWidth??'100%',height:layout?.canvasHeight??'100%'}}>
       <img src={source} alt={name} draggable={false} decoding="async"
         onLoad={event=>{setNatural({width:event.currentTarget.naturalWidth,height:event.currentTarget.naturalHeight});setLoading(false);}}
         onError={()=>{if(!fallback&&source!==src){setFallback(true);}else{setFailed(true);setLoading(false);}}}

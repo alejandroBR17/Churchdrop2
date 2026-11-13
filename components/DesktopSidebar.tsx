@@ -53,8 +53,8 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   return (
     <aside className="workspace-sidebar hidden md:flex fixed inset-y-0 left-0 z-40 w-64 flex-col">
       <div className="px-6 pt-8 pb-7">
-        <Brand className="h-auto w-full text-white" symbolColor="#60a5fa"/>
-        <p className="mt-3 text-[11px] text-slate-400">Da sua mão para a projeção.</p>
+        <Brand className="h-auto w-full text-slate-900 dark:text-white"/>
+        <p className="mt-3 text-[11px] text-neutral-500 dark:text-slate-400">Da sua mão para a projeção.</p>
       </div>
       <nav aria-label="Biblioteca e ferramentas" className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 space-y-1">
         <p className="eyebrow px-3 pb-3">Biblioteca</p>
@@ -65,7 +65,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
         <button onClick={()=>setShowShortcuts(true)} className="sidebar-link"><span className="flex items-center gap-3"><Keyboard size={18}/>Atalhos de Teclado</span></button>
         {deferredPrompt && <button onClick={handleInstallClick} className="sidebar-link"><span className="flex items-center gap-3"><DownloadCloud size={18}/>Instalar aplicativo</span></button>}
       </nav>
-      <div className="p-4 border-t border-white/10"><button onClick={toggleTheme} className="sidebar-link"><span className="flex items-center gap-3">{isDarkMode ? <Sun size={18}/> : <Moon size={18}/>} {isDarkMode ? 'Modo Claro' : 'Modo Escuro'}</span></button><p className="mt-4 px-3 text-[10px] text-slate-500 flex items-center gap-2"><ShieldCheck size={13}/>Gerenciamento com acesso protegido</p></div>
+      <div className="p-4 border-t border-neutral-200 dark:border-white/10"><button onClick={toggleTheme} className="sidebar-link"><span className="flex items-center gap-3">{isDarkMode ? <Sun size={18}/> : <Moon size={18}/>} {isDarkMode ? 'Modo Claro' : 'Modo Escuro'}</span></button><p className="mt-4 px-3 text-[10px] text-slate-500 flex items-center gap-2"><ShieldCheck size={13}/>Gerenciamento com acesso protegido</p></div>
     </aside>
   );
 };

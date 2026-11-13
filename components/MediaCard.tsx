@@ -74,12 +74,12 @@ export const MediaCard: React.FC<MediaCardProps> = ({
       }}
     >
       {/* Media Preview Box */}
-      <div className="aspect-video w-full bg-neutral-950 relative overflow-hidden flex items-center justify-center">
+      <div className="aspect-video w-full bg-neutral-100 dark:bg-neutral-950 relative overflow-hidden flex items-center justify-center">
         {(item.type === 'image' || item.type === 'video') && item.url && !imgError ? (
           <>
             {isImgLoading && (
-              <div className="absolute inset-0 bg-neutral-800 animate-pulse flex items-center justify-center z-10">
-                <div className="w-6 h-6 border-2 border-neutral-600 border-t-neutral-300 rounded-full animate-spin" />
+              <div className="absolute inset-0 bg-neutral-200 dark:bg-neutral-800 animate-pulse flex items-center justify-center z-10">
+                <div className="w-6 h-6 border-2 border-neutral-300 dark:border-neutral-600 border-t-blue-600 dark:border-t-neutral-300 rounded-full animate-spin" />
               </div>
             )}
             <img 
@@ -106,7 +106,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({
             )}
           </>
         ) : (
-          <div className="flex flex-col items-center justify-center p-4 text-center text-neutral-400">
+          <div className="flex flex-col items-center justify-center p-4 text-center text-neutral-600 dark:text-neutral-400">
             {item.type === 'video' && <Video size={36} className="text-amber-400 mb-1" />}
             {item.type === 'image' && <ImageIcon size={36} className="text-blue-400 mb-1" />}
             {item.type === 'pdf' && <FileText size={36} className="text-rose-400 mb-1" />}
@@ -114,7 +114,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({
             {item.type === 'text' && <FileText size={36} className="text-emerald-400 mb-1" />}
             
             {item.type === 'text' && item.textContent && (
-              <p className="text-[11px] text-neutral-300 line-clamp-3 font-mono mt-1 px-2 text-left bg-neutral-900/80 p-2 rounded border border-neutral-800">
+              <p className="text-[11px] text-neutral-700 dark:text-neutral-300 line-clamp-3 font-mono mt-1 px-2 text-left bg-white dark:bg-neutral-900/80 p-2 rounded border border-neutral-200 dark:border-neutral-800">
                 {item.textContent}
               </p>
             )}

@@ -66,12 +66,12 @@ export function MediaPlayback({item, onDownload}: {item: MediaItem; onDownload: 
     onEnded: () => setStatus('ended'),
     onError: () => setStatus('error'),
   };
-  const buttonClass = 'min-h-11 rounded-xl border border-neutral-700 px-3 py-2 text-xs font-semibold text-white hover:bg-neutral-800';
-  return <section aria-label={`Reprodutor de ${kind === 'video' ? 'vídeo' : 'áudio'}`} className="w-full min-w-0 max-h-full overflow-y-auto rounded-2xl bg-neutral-900 p-3 text-white">
+  const buttonClass = 'min-h-11 rounded-xl border border-neutral-300 dark:border-neutral-700 px-3 py-2 text-xs font-semibold text-neutral-900 dark:text-white hover:bg-neutral-100 dark:hover:bg-neutral-800';
+  return <section aria-label={`Reprodutor de ${kind === 'video' ? 'vídeo' : 'áudio'}`} className="w-full min-w-0 max-h-full overflow-y-auto rounded-2xl bg-white dark:bg-neutral-900 p-3 text-neutral-900 dark:text-white">
     {kind === 'video'
       ? <video key={`${source}:${attempt}`} ref={video} src={source} data-univer-player controls playsInline preload="metadata" aria-label={item.name} className="w-full max-h-[55dvh] object-contain bg-black" {...events}/>
       : <audio key={`${source}:${attempt}`} ref={audio} src={source} data-univer-player controls preload="metadata" aria-label={item.name} className="w-full" {...events}/>}
-    <p role="status" className="mt-2 text-xs leading-relaxed text-neutral-300">{messages[status]}</p>
+    <p role="status" className="mt-2 text-xs leading-relaxed text-neutral-600 dark:text-neutral-300">{messages[status]}</p>
     {status === 'error' && <div className="mt-3 flex flex-wrap gap-2">
       <button type="button" className={buttonClass} onClick={() => setAttempt(value => value + 1)}>Tentar novamente</button>
       {!item.id.startsWith('temp_') && <a className={`${buttonClass} inline-flex items-center`} href={`https://drive.google.com/file/d/${encodeURIComponent(item.id)}/view`} target="_blank" rel="noopener noreferrer">Abrir no Drive</a>}

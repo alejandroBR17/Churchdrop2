@@ -4,8 +4,8 @@
   "description": "Transferência de arquivos para a técnica.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0a0a0a",
-  "theme_color": "#1e3a8a",
+  "background_color": "#f5f7fb",
+  "theme_color": "#f5f7fb",
   "orientation": "portrait",
   "icons": [
     {

@@ -10,10 +10,10 @@ export function PdfPreview({item, onDownload}: {item: MediaItem; onDownload: (ur
     const timer = window.setTimeout(() => setStatus(previous => previous === 'loading' ? 'slow' : previous), 12000);
     return () => window.clearTimeout(timer);
   }, [source, attempt]);
-  const buttonClass = 'inline-flex min-h-11 items-center rounded-xl border border-neutral-700 px-3 py-2 text-xs text-white hover:bg-neutral-800';
-  return <section aria-label="Prévia do PDF" className="flex h-full w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-900">
+  const buttonClass = 'inline-flex min-h-11 items-center rounded-xl border border-neutral-300 dark:border-neutral-700 px-3 py-2 text-xs text-neutral-900 dark:text-white hover:bg-neutral-100 dark:hover:bg-neutral-800';
+  return <section aria-label="Prévia do PDF" className="flex h-full w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
     <div className="shrink-0 space-y-2 p-3">
-      <p role="status" className="text-xs leading-relaxed text-neutral-300">
+      <p role="status" className="text-xs leading-relaxed text-neutral-600 dark:text-neutral-300">
         {status === 'loading' ? 'Carregando prévia do PDF…' : status === 'slow' ? 'A prévia está demorando. Você pode abrir o PDF em outra aba ou baixar.' : status === 'error' ? 'Não foi possível carregar a prévia. Abra o PDF ou tente novamente.' : 'Se a prévia ficar em branco, use Abrir PDF.'}
       </p>
       <div className="flex flex-wrap gap-2">

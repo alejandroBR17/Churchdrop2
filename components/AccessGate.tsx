@@ -74,12 +74,12 @@ export function AccessGate({children}: {children: React.ReactNode}) {
     finally {setBusy(false);}
   }
   if (state === 'open') return <>
-    <div className="operator-strip bg-neutral-900 text-white px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+    <div className="operator-strip px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-xs">
       <span className="flex items-center gap-2"><ShieldCheck size={16}/>{sessionInfo.remembered && sessionInfo.expiresAt ? `Conectado até ${new Date(sessionInfo.expiresAt).toLocaleDateString('pt-BR')}` : 'Acesso de operador'}</span>
       <div className="flex flex-wrap items-center gap-2">
-      <button type="button" onClick={()=>setShowLink(true)} disabled={busy} className="flex items-center gap-2 rounded-lg bg-neutral-800 px-3 py-2 hover:bg-neutral-700 disabled:opacity-50"><Link2 size={16}/>Meu link</button>
-      {!sessionInfo.remembered && <button type="button" onClick={rememberDevice} disabled={busy} className="rounded-lg border border-blue-500/50 px-3 py-2 text-blue-200 disabled:opacity-50">{remembering?'Salvando…':'Lembrar 7 dias'}</button>}
-      <button type="button" onClick={leave} disabled={busy} className="flex items-center gap-2 rounded-lg px-3 py-2 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50"><LogOut size={16}/> {busy && !remembering ? 'Saindo…' : 'Sair deste aparelho'}</button>
+      <button type="button" onClick={()=>setShowLink(true)} disabled={busy} className="flex items-center gap-2 rounded-lg bg-neutral-100 dark:bg-neutral-800 px-3 py-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 disabled:opacity-50"><Link2 size={16}/>Meu link</button>
+      {!sessionInfo.remembered && <button type="button" onClick={rememberDevice} disabled={busy} className="rounded-lg border border-blue-500/50 px-3 py-2 text-blue-700 dark:text-blue-200 disabled:opacity-50">{remembering?'Salvando…':'Lembrar 7 dias'}</button>}
+      <button type="button" onClick={leave} disabled={busy} className="flex items-center gap-2 rounded-lg px-3 py-2 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 disabled:opacity-50"><LogOut size={16}/> {busy && !remembering ? 'Saindo…' : 'Sair deste aparelho'}</button>
       </div>
     </div>
     {notice && <p role="status" className="bg-blue-50 text-blue-900 dark:bg-blue-950 dark:text-blue-100 px-4 py-2 text-xs">{notice}</p>}
@@ -87,25 +87,25 @@ export function AccessGate({children}: {children: React.ReactNode}) {
     {children}
     {showLink&&<PersonalAccessModal onClose={()=>setShowLink(false)}/>}
   </>;
-  return <main className="access-page min-h-screen bg-neutral-950 text-neutral-100 flex items-center justify-center p-5">
-    <section className="access-card w-full max-w-md rounded-3xl border border-neutral-800 bg-neutral-900 p-6 sm:p-8 shadow-2xl">
-      <Brand className="mb-7 h-auto w-64 max-w-full text-white" symbolColor="#60a5fa"/>
+  return <main className="access-page min-h-screen flex items-center justify-center p-5">
+    <section className="access-card w-full max-w-md rounded-3xl border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8 shadow-2xl">
+      <Brand className="mb-7 h-auto w-64 max-w-full text-slate-900 dark:text-white"/>
       <h1 className="text-2xl font-bold mb-3">{state === 'preparing' ? 'Preparando seu novo espaço' : 'Suas mídias, no lugar certo'}</h1>
-      {state === 'checking' ? <p role="status" className="flex items-center gap-2 text-neutral-400"><Loader2 size={18} className="animate-spin"/> Verificando acesso…</p> : state === 'locked' ? <form onSubmit={enter} className="space-y-5">
-        {typeof window !== 'undefined' && window.location.hostname.endsWith('.vercel.app') && window.location.hostname !== 'churchdrop2.vercel.app' && <a href="https://churchdrop2.vercel.app/" className="block rounded-xl border border-blue-800 bg-blue-950/40 p-3 text-sm text-blue-200">Usar o endereço fixo do app →<span className="mt-1 block text-xs text-neutral-400">O acesso salvo em links de prévia não passa para outro endereço.</span></a>}
-        <p className="text-sm leading-relaxed text-neutral-400">Use a senha de acesso para enviar e organizar os materiais. Não precisa entrar com uma conta Google.</p>
+      {state === 'checking' ? <p role="status" className="flex items-center gap-2 text-neutral-600 dark:text-neutral-400"><Loader2 size={18} className="animate-spin"/> Verificando acesso…</p> : state === 'locked' ? <form onSubmit={enter} className="space-y-5">
+        {typeof window !== 'undefined' && window.location.hostname.endsWith('.vercel.app') && window.location.hostname !== 'churchdrop2.vercel.app' && <a href="https://churchdrop2.vercel.app/" className="block rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/40 p-3 text-sm text-blue-700 dark:text-blue-200">Usar o endereço fixo do app →<span className="mt-1 block text-xs text-neutral-600 dark:text-neutral-400">O acesso salvo em links de prévia não passa para outro endereço.</span></a>}
+        <p className="text-sm leading-relaxed text-neutral-600 dark:text-neutral-400">Use a senha de acesso para enviar e organizar os materiais. Não precisa entrar com uma conta Google.</p>
         <label className="block text-sm font-medium">Senha de acesso
           <input type="hidden" name="username" value="operador" autoComplete="username"/>
-          <input autoFocus name="password" type="password" autoComplete="current-password" minLength={6} maxLength={64} required value={code} onChange={e => setCode(e.target.value)} className="mt-2 w-full min-w-0 rounded-xl border border-neutral-700 bg-neutral-950 p-3 text-lg tracking-widest focus:outline-none focus:ring-2 focus:ring-blue-500" aria-describedby="password-help"/>
+          <input autoFocus name="password" type="password" autoComplete="current-password" minLength={6} maxLength={64} required value={code} onChange={e => setCode(e.target.value)} className="mt-2 w-full min-w-0 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-950 p-3 text-lg tracking-widest focus:outline-none focus:ring-2 focus:ring-blue-500" aria-describedby="password-help"/>
         </label>
-        <p id="password-help" className="text-xs text-neutral-400">De 6 a 64 caracteres. Pode usar letras, números ou símbolos.</p>
-        <label className="flex items-start gap-3 text-sm text-neutral-300"><input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} className="mt-1"/><span>Este aparelho é meu · lembrar por 7 dias<span className="block mt-1 text-xs text-neutral-500">Atualizações no link fixo mantêm o acesso. Em aparelho emprestado, deixe desmarcado e use Sair ao terminar.</span></span></label>
-        {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
-        <button disabled={busy || code.length < 6 || code.length > 64} className="w-full rounded-xl bg-blue-600 hover:bg-blue-500 px-4 py-3 font-semibold disabled:opacity-50">{busy ? 'Verificando…' : 'Entrar'}</button>
+        <p id="password-help" className="text-xs text-neutral-600 dark:text-neutral-400">De 6 a 64 caracteres. Pode usar letras, números ou símbolos.</p>
+        <label className="flex items-start gap-3 text-sm text-neutral-700 dark:text-neutral-300"><input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} className="mt-1"/><span>Este aparelho é meu · lembrar por 7 dias<span className="block mt-1 text-xs text-neutral-500">Atualizações no link fixo mantêm o acesso. Em aparelho emprestado, deixe desmarcado e use Sair ao terminar.</span></span></label>
+        {error && <p role="alert" className="text-sm text-rose-700 dark:text-rose-300">{error}</p>}
+        <button disabled={busy || code.length < 6 || code.length > 64} className="w-full rounded-xl bg-blue-600 text-white hover:bg-blue-500 px-4 py-3 font-semibold disabled:opacity-50">{busy ? 'Verificando…' : 'Entrar'}</button>
       </form> : <>
-        <p className="text-sm leading-relaxed text-neutral-400">{state === 'preparing' ? 'Estamos conectando o acesso seguro e o novo armazenamento. Nenhum arquivo antigo será alterado.' : error}</p>
-        <button onClick={check} className="mt-6 w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold">Verificar novamente</button>
-        {state==='error'&&<button onClick={()=>{clearAccessLink();setError('');setState('locked');}} className="mt-3 w-full rounded-xl border border-neutral-700 px-4 py-3 text-sm">Entrar com a senha</button>}
+        <p className="text-sm leading-relaxed text-neutral-600 dark:text-neutral-400">{state === 'preparing' ? 'Estamos conectando o acesso seguro e o novo armazenamento. Nenhum arquivo antigo será alterado.' : error}</p>
+        <button onClick={check} className="mt-6 w-full rounded-xl bg-blue-600 text-white px-4 py-3 font-semibold">Verificar novamente</button>
+        {state==='error'&&<button onClick={()=>{clearAccessLink();setError('');setState('locked');}} className="mt-3 w-full rounded-xl border border-neutral-300 dark:border-neutral-700 px-4 py-3 text-sm">Entrar com a senha</button>}
       </>}
     </section>
   </main>;

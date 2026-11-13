@@ -111,8 +111,9 @@ export default function App() {
     return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
   }, []);
 
-  // Sync Theme with DOM
+  // Sync Theme with DOM and the browser toolbar (including installed apps).
   useEffect(() => {
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', isDarkMode ? '#0b1424' : '#f5f7fb');
     if (isDarkMode) {
       document.documentElement.classList.add('dark');
       try {localStorage.setItem('theme', 'dark');} catch {}

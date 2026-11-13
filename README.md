@@ -165,3 +165,10 @@ O QR é gerado localmente e compartilha o endereço público fixo quando aberto 
 A marca aprovada foi vetorizada em contornos, mantendo o U com play e o desenho do nome, sem depender de fontes. `public/brand` contém símbolo, nome e composição completa em SVG: original azul/escuro, azul, branco, escuro e azul claro/branco para fundo escuro. Arquivos `*-currentcolor.svg` permitem recolorir a marca por CSS quando inseridos inline. PNGs transparentes e o kit completo também estão disponíveis nesse diretório.
 
 `components/Brand.tsx` reutiliza os mesmos contornos com `variant="symbol"`, `"wordmark"` ou `"combined"`. O texto herda `currentColor`; o símbolo aceita `symbolColor` ou a variável `--brand-symbol`. Cabeçalho, menu, lateral e tela de acesso usam esse componente. Favicon, ícones de instalação e Apple Touch Icon usam arquivos locais; o ícone maskable tem margem própria para os recortes do sistema. Não há mais dependência da antiga imagem do Imgur.
+
+
+## Temas claro e escuro
+
+Lateral, faixa de acesso, login, fundos das prévias dos cartões, visualizador e barras de áudio/seleção acompanham o tema. Superfícies usam cores claras por padrão; fundos escuros pertencem às variantes dark. A marca herda a cor do texto e usa o azul definido por `--brand-symbol` no tema. Vídeos e imagens mantêm as próprias cores.
+
+A preferência salva prevalece sobre o sistema e continua após recarregar ou sair. A barra do navegador recebe a cor do tema, inclusive na tela de login antes de montar o App. O manifest usa uma superfície clara como padrão de abertura; o tema escolhido é aplicado pelo documento.
