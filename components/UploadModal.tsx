@@ -141,7 +141,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
         prepared.current.set(original,fileToUpload);
         update(null);
         await uploadFileToScript(fileToUpload,eventName,undefined,{signal:controller.signal,shareByLink,onStatus:status=>update(status)});
-        setCompletedCount(count=>count+1);updateReport(original,{outcome:'complete',phase:'complete',message:undefined});
+        prepared.current.delete(original);setCompletedCount(count=>count+1);updateReport(original,{outcome:'complete',phase:'complete',message:undefined});
       } catch(cause){updateReport(original,{outcome:interruptedOutcome(phase,controller.signal.aborted),phase,message:cause instanceof Error?cause.message:'Não foi possível concluir.'});throw cause;
       } finally {
         setActiveTransfers(previous=>{const next={...previous};delete next[index];return next;});
